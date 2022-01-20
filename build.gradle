@@ -1,0 +1,47 @@
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+
+buildscript {
+    ext.kotlin_version = '1.4.32'
+
+    File localDir = new File(System.getProperty("user.home") + "/.m2/repository/")
+    rootProject.ext.mavenLocalUrl = "file://"+localDir.getAbsolutePath()
+
+    repositories {
+        google()
+        jcenter()
+        maven {
+            url rootProject.ext.mavenLocalUrl
+        }
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:4.1.2'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        classpath "io.github.jamgudev:krouter-plugin:1.0.6"
+
+        // NOTE: Do not place your application dependencies here; they belong
+        // in the individual module build.gradle files
+    }
+
+}
+
+ext {
+//    krouter_core_version = "1.0.5" // edit the version number you need
+//    krouter_compiler_version = "1.0.4" // edit the version number you need
+    krouter_compile_loggable = true
+}
+
+allprojects {
+    repositories {
+        google()
+        jcenter()
+//        maven { url "https://www.jitpack.io" }
+        mavenCentral()
+        maven {
+            url rootProject.ext.mavenLocalUrl
+        }
+    }
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}

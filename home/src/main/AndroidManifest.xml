@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+        package="com.jamgu.home">
+
+    <application>
+        <activity android:name=".dawerlayout.DrawerActivity"
+                android:theme="@style/Theme.AppCompat.Light.NoActionBar"/>
+        <activity android:name=".viwemodel.ViewModelActivity" />
+        <activity android:name=".SettingActivity" />
+        <activity
+                android:name=".HomePageActivity"
+                android:launchMode="singleTask"
+                android:taskAffinity="com.jamgu.test2" />
+
+        <service
+                android:name=".jobscheduler.MJobService"
+                android:permission="android.permission.BIND_JOB_SERVICE" />
+    </application>
+
+</manifest>

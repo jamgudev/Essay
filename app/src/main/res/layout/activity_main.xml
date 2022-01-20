@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.appcompat.widget.LinearLayoutCompat xmlns:android="http://schemas.android.com/apk/res/android"
+        xmlns:tools="http://schemas.android.com/tools"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        tools:context=".MainActivity"
+        android:orientation="vertical"
+        android:paddingLeft="16dp"
+        android:paddingRight="16dp"
+        android:gravity="center">
+
+    <androidx.appcompat.widget.AppCompatButton
+            android:id="@+id/btn2Home"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:text="Go To Home In Other Module" />
+
+</androidx.appcompat.widget.LinearLayoutCompat>
