@@ -31,4 +31,8 @@ class Schemes {
         const val GAME_ID = "GAME_ID"
     }
 
+    object QQContactPage {
+        const val HOME_NAME = "qq_contact_page"
+    }
+
 }

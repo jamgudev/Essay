@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Transparent_Theme" parent="Theme.AppCompat.Light.NoActionBar" >
+        <!--<item name="android:statusBarColor">@color/transparent</item>
+        <item name="android:colorPrimaryDark">@color/transparent</item>-->
+    </style>
+</resources>

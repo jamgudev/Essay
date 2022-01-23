@@ -3,8 +3,11 @@
         package="com.jamgu.home">
 
     <application>
-        <activity android:name=".dawerlayout.DrawerActivity"
-                android:theme="@style/Theme.AppCompat.Light.NoActionBar"/>
+        <activity android:name=".recyclerview.QQContactActivity"
+                android:theme="@style/Transparent_Theme"/>
+        <activity
+                android:name=".dawerlayout.DrawerActivity"
+                android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
         <activity android:name=".viwemodel.ViewModelActivity" />
         <activity android:name=".SettingActivity" />
         <activity
