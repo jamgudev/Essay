@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.jamgu.home.viewevent.EventLinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+        android:id="@+id/eventViewGroup"
+        android:orientation="vertical"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+    <com.jamgu.home.viewevent.EventButton
+            android:id="@+id/eventView"
+            android:layout_width="match_parent"
+            android:layout_height="46dp"
+            android:layout_marginTop="40dp" />
+
+</com.jamgu.home.viewevent.EventLinearLayout>

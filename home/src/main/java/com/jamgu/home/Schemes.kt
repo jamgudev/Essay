@@ -35,4 +35,7 @@ class Schemes {
         const val HOME_NAME = "qq_contact_page"
     }
 
+    object ViewEventPage {
+        const val HOST_NAME = "event_page"
+    }
 }

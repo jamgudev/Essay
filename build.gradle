@@ -27,7 +27,7 @@ buildscript {
 ext {
 //    krouter_core_version = "1.0.5" // edit the version number you need
 //    krouter_compiler_version = "1.0.4" // edit the version number you need
-    krouter_compile_loggable = true
+    krouter_compile_loggable = false
 }
 
 allprojects {
