@@ -7,11 +7,10 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
-import androidx.drawerlayout.widget.DrawerLayout
-import com.jamgu.base.util.JLog
 import com.jamgu.base.widget.dp2px
 import com.jamgu.base.widget.getScreenHeight
 import com.jamgu.base.widget.getScreenWidth
+import com.jamgu.common.util.log.JLog
 import com.jamgu.common.util.statusbar.StatusBarUtil
 import com.jamgu.home.R
 import com.jamgu.home.Schemes

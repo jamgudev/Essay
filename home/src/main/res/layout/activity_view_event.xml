@@ -8,7 +8,27 @@
     <com.jamgu.home.viewevent.EventButton
             android:id="@+id/eventView"
             android:layout_width="match_parent"
-            android:layout_height="46dp"
-            android:layout_marginTop="40dp" />
+            android:layout_height="match_parent">
+
+        <androidx.appcompat.widget.AppCompatTextView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:background="#f0ff"
+                android:text="1" />
+
+        <androidx.appcompat.widget.AppCompatTextView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="2" />
+
+        <androidx.appcompat.widget.AppCompatTextView
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="2" />
+
+    </com.jamgu.home.viewevent.EventButton>
 
 </com.jamgu.home.viewevent.EventLinearLayout>
