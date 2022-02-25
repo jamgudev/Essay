@@ -1019,7 +1019,6 @@ public class ReboundScrollView extends FrameLayout implements OnTouchListener {
 
             // active pointer and adjust accordingly.
 
-            // TODO: Make this decision more intelligent.
 
             final int newPointerIndex = pointerIndex == 0 ? 1 : 0;
 
