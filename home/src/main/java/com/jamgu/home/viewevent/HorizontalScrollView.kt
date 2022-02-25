@@ -8,26 +8,39 @@ import android.view.ViewGroup
 import android.widget.Scroller
 import androidx.core.view.children
 import androidx.core.view.isVisible
+import com.jamgu.common.util.log.JLog
 import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
 
-private const val TAG = "EventButton"
+private const val TAG = "HorizontalScrollView"
 
 /**
  * Created by jamgu on 2022/02/18
+ *
+ * 解决父-左右，子上下滑动冲突场景
  */
-class EventButton: ViewGroup {
+class HorizontalScrollView: ViewGroup {
 
-    var mLastX = 0.0f
-    var mLastY = 0.0f
-    var mLastInterceptX = 0.0f
-    var mLastInterceptY = 0.0f
-    var mTracker = VelocityTracker.obtain()
-    var mScroller = Scroller(context)
+    private var mLastX = 0.0f
+    private var mLastY = 0.0f
+    private var mLastInterceptX = 0.0f
+    private var mLastInterceptY = 0.0f
+    private var mTracker = VelocityTracker.obtain()
+    private var mScroller = Scroller(context)
 
-    constructor(context: Context) : super(context)
-    constructor(context: Context, attrs: AttributeSet?) : super(context, attrs)
-    constructor(context: Context, attrs: AttributeSet?, defStyleAttr: Int) : super(context, attrs, defStyleAttr)
+    constructor(context: Context) : super(context) {
+        init()
+    }
+    constructor(context: Context, attrs: AttributeSet?) : super(context, attrs) {
+        init()
+    }
+    constructor(context: Context, attrs: AttributeSet?, defStyleAttr: Int) : super(context, attrs, defStyleAttr) {
+        init()
+    }
+
+    private fun init() {
+        setWillNotDraw(false)
+    }
 
     override fun onInterceptTouchEvent(ev: MotionEvent?): Boolean {
         ev ?: return false
@@ -62,6 +75,7 @@ class EventButton: ViewGroup {
 
     override fun onTouchEvent(event: MotionEvent?): Boolean {
         event ?: return true
+        val child = getChildAt(0) ?: return true
 
         mTracker.addMovement(event)
         val x = event.x
@@ -71,20 +85,27 @@ class EventButton: ViewGroup {
             MotionEvent.ACTION_DOWN -> {
             }
             MotionEvent.ACTION_MOVE -> {
-                val deltaX = x - mLastX
+                var deltaX = x - mLastX
                 val deltaY = y - mLastY
-                scrollBy(-deltaX.roundToInt(), 0)
+                val childCurIdx = scrollX / child.width
+                val scrollPercent = ((scrollX * 1.0f  % child.width) / child.width).absoluteValue
+                JLog.d(TAG, "scrollPercent = $scrollPercent, childCurIdx = $childCurIdx, deltaX = $deltaX, scrollX = $scrollX")
+                if (isOverScrolled()) {
+                    scrollBy(-deltaX.roundToInt() / 2, 0)
+                } else {
+                    scrollBy(-deltaX.roundToInt(), 0)
+                }
             }
             MotionEvent.ACTION_UP -> {
                 mTracker.computeCurrentVelocity(1000)
                 val xVelocity = mTracker.xVelocity
-                val child = getChildAt(0)
-                child?.let {
+                child.let {
                     val childWidth = it.width
                     var childIdx = (scrollX / childWidth)
                     childIdx = if (xVelocity.absoluteValue >= 50) {
                         if (xVelocity > 0) childIdx else childIdx + 1
                     } else {
+                        // 在用户抬起手指时，当前的childIdx已经-1了，所以不用再减1了
                         (scrollX + childWidth / 2) / childWidth
                     }
                     childIdx = childIdx.coerceAtLeast(0).coerceAtMost(childCount - 1)
@@ -153,6 +174,14 @@ class EventButton: ViewGroup {
                 childLeft += measuredWidth + paddingRight + lp.rightMargin
             }
         }
+    }
+
+    private fun isOverScrolled(): Boolean {
+        var wholeWidth = 0L
+        children.forEach {
+            wholeWidth += it.width
+        }
+        return scrollX < 0 || scaleX > (wholeWidth + paddingRight + paddingLeft - width)
     }
 
     override fun generateLayoutParams(attrs: AttributeSet?): LayoutParams {

@@ -5,32 +5,32 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
-    <com.jamgu.home.viewevent.EventButton
+    <com.jamgu.home.viewevent.HorizontalScrollView
             android:id="@+id/eventView"
             android:layout_width="match_parent"
             android:layout_height="match_parent">
 
-        <com.jamgu.home.viewevent.EventRecyclerView
-                android:id="@+id/vRecycler1"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:gravity="center"/>
+            <com.jamgu.home.viewevent.EventRecyclerView
+                    android:id="@+id/vRecycler1"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:gravity="center" />
 
-        <com.jamgu.home.viewevent.EventRecyclerView
-                android:id="@+id/vRecycler2"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"/>
+            <com.jamgu.home.viewevent.EventRecyclerView
+                    android:id="@+id/vRecycler2"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
 
-        <com.jamgu.home.viewevent.EventRecyclerView
-                android:id="@+id/vRecycler3"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"/>
+            <com.jamgu.home.viewevent.EventRecyclerView
+                    android:id="@+id/vRecycler3"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
 
-        <com.jamgu.home.viewevent.EventRecyclerView
-                android:id="@+id/vRecycler4"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"/>
+            <com.jamgu.home.viewevent.EventRecyclerView
+                    android:id="@+id/vRecycler4"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
 
-    </com.jamgu.home.viewevent.EventButton>
+    </com.jamgu.home.viewevent.HorizontalScrollView>
 
 </androidx.appcompat.widget.LinearLayoutCompat>
