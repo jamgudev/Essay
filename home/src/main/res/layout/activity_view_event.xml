@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<com.jamgu.home.viewevent.EventLinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.appcompat.widget.LinearLayoutCompat xmlns:android="http://schemas.android.com/apk/res/android"
         android:id="@+id/eventViewGroup"
         android:orientation="vertical"
         android:layout_width="match_parent"
@@ -10,25 +10,27 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent">
 
-        <androidx.appcompat.widget.AppCompatTextView
+        <com.jamgu.home.viewevent.EventRecyclerView
+                android:id="@+id/vRecycler1"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:gravity="center"
-                android:background="#f0ff"
-                android:text="1" />
+                android:gravity="center"/>
 
-        <androidx.appcompat.widget.AppCompatTextView
+        <com.jamgu.home.viewevent.EventRecyclerView
+                android:id="@+id/vRecycler2"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:text="2" />
+                android:layout_height="match_parent"/>
 
-        <androidx.appcompat.widget.AppCompatTextView
+        <com.jamgu.home.viewevent.EventRecyclerView
+                android:id="@+id/vRecycler3"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:gravity="center"
-                android:text="2" />
+                android:layout_height="match_parent"/>
+
+        <com.jamgu.home.viewevent.EventRecyclerView
+                android:id="@+id/vRecycler4"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"/>
 
     </com.jamgu.home.viewevent.EventButton>
 
-</com.jamgu.home.viewevent.EventLinearLayout>
+</androidx.appcompat.widget.LinearLayoutCompat>

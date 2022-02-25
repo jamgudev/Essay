@@ -3,11 +3,13 @@ package com.jamgu.home.viewevent
 import android.content.Context
 import android.util.AttributeSet
 import android.view.MotionEvent
+import android.view.VelocityTracker
 import android.view.ViewGroup
+import android.widget.Scroller
 import androidx.core.view.children
 import androidx.core.view.isVisible
-import androidx.recyclerview.widget.RecyclerView
-import com.jamgu.common.util.log.JLog
+import kotlin.math.absoluteValue
+import kotlin.math.roundToInt
 
 private const val TAG = "EventButton"
 
@@ -16,15 +18,100 @@ private const val TAG = "EventButton"
  */
 class EventButton: ViewGroup {
 
+    var mLastX = 0.0f
+    var mLastY = 0.0f
+    var mLastInterceptX = 0.0f
+    var mLastInterceptY = 0.0f
+    var mTracker = VelocityTracker.obtain()
+    var mScroller = Scroller(context)
+
     constructor(context: Context) : super(context)
     constructor(context: Context, attrs: AttributeSet?) : super(context, attrs)
     constructor(context: Context, attrs: AttributeSet?, defStyleAttr: Int) : super(context, attrs, defStyleAttr)
 
-    override fun onTouchEvent(event: MotionEvent?): Boolean {
+    override fun onInterceptTouchEvent(ev: MotionEvent?): Boolean {
+        ev ?: return false
+        val x = ev.x
+        val y = ev.y
 
-        val result = super.onTouchEvent(event)
-        JLog.d(TAG, "result = $result")
-        return result
+        var intercepted = false
+        when(ev.action) {
+            MotionEvent.ACTION_DOWN -> {
+                if (!mScroller.isFinished) {
+                    mScroller.abortAnimation()
+                }
+                intercepted = false
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val dX = (x - mLastInterceptX).absoluteValue
+                val dY = (y - mLastInterceptY).absoluteValue
+                if (dX > dY) {
+                    intercepted = true
+                }
+            }
+            MotionEvent.ACTION_UP -> {
+                intercepted = false
+            }
+        }
+        mLastX = x
+        mLastY = y
+        mLastInterceptX = x
+        mLastInterceptY = y
+        return intercepted
+    }
+
+    override fun onTouchEvent(event: MotionEvent?): Boolean {
+        event ?: return true
+
+        mTracker.addMovement(event)
+        val x = event.x
+        val y = event.y
+
+        when(event.action) {
+            MotionEvent.ACTION_DOWN -> {
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val deltaX = x - mLastX
+                val deltaY = y - mLastY
+                scrollBy(-deltaX.roundToInt(), 0)
+            }
+            MotionEvent.ACTION_UP -> {
+                mTracker.computeCurrentVelocity(1000)
+                val xVelocity = mTracker.xVelocity
+                val child = getChildAt(0)
+                child?.let {
+                    val childWidth = it.width
+                    var childIdx = (scrollX / childWidth)
+                    childIdx = if (xVelocity.absoluteValue >= 50) {
+                        if (xVelocity > 0) childIdx else childIdx + 1
+                    } else {
+                        (scrollX + childWidth / 2) / childWidth
+                    }
+                    childIdx = childIdx.coerceAtLeast(0).coerceAtMost(childCount - 1)
+                    val dx = childIdx * childWidth - scrollX
+
+                    smoothScrollBy(dx, 0)
+                    mTracker.clear()
+                }
+            }
+        }
+
+        mLastX = x
+        mLastY = y
+
+        return true
+    }
+
+    private fun smoothScrollBy(dx: Int, dy: Int) {
+        mScroller.startScroll(scrollX, 0, dx, 0, 500)
+        invalidate()
+    }
+
+    override fun computeScroll() {
+        if (mScroller.computeScrollOffset()) {
+            scrollTo(mScroller.currX, mScroller.currY)
+            postInvalidate()
+        }
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -66,7 +153,6 @@ class EventButton: ViewGroup {
                 childLeft += measuredWidth + paddingRight + lp.rightMargin
             }
         }
-
     }
 
     override fun generateLayoutParams(attrs: AttributeSet?): LayoutParams {
