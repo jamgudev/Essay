@@ -29,12 +29,15 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
     private var mLastY = 0.0f
     private var mLastInterceptX = 0.0f
     private var mLastInterceptY = 0.0f
-    private var mTracker = VelocityTracker.obtain()
+    private var mVelocityTracker = VelocityTracker.obtain()
     private var mScroller = Scroller(context)
     // 记录当前显示子 View 的索引
     private var mChildCurIdx = 0
     // 记录当前滑动的方向
     private var mTouchDirection = DIRECTION_NONE
+
+    // 处理多点触碰，用于记录当前处理滑动的触摸点ID
+    private var mScrollPointerId = 0
 
     constructor(context: Context) : super(context) {
         init()
@@ -52,18 +55,35 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
 
     override fun onInterceptTouchEvent(ev: MotionEvent?): Boolean {
         ev ?: return false
-        val x = ev.x
-        val y = ev.y
+
+        val actionIndex = ev.actionIndex
+        // action without idx
+        val action = ev.actionMasked
 
         var intercepted = false
-        when(ev.action) {
+        when(action) {
             MotionEvent.ACTION_DOWN -> {
                 if (!mScroller.isFinished) {
                     mScroller.abortAnimation()
                 }
+                mScrollPointerId = ev.getPointerId(0)
+                mLastX = ev.x.also { mLastInterceptX = it }
+                mLastY = ev.y.also { mLastInterceptY = it }
                 intercepted = false
             }
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                mScrollPointerId = ev.getPointerId(actionIndex)
+                mLastX = ev.getX(actionIndex).also { mLastInterceptX = it }
+                mLastY = ev.getY(actionIndex).also { mLastInterceptY = it }
+            }
             MotionEvent.ACTION_MOVE -> {
+                val pIdx = ev.findPointerIndex(mScrollPointerId)
+                if (pIdx < 0) {
+                    JLog.e(TAG, "pointer index for id $mScrollPointerId not found. Did any MotionEvent get skipped?")
+                    return false
+                }
+                val x = ev.getX(pIdx)
+                val y = ev.getY(pIdx)
                 val dX = (x - mLastInterceptX).absoluteValue
                 val dY = (y - mLastInterceptY).absoluteValue
                 mTouchDirection = if (dX > dY) {
@@ -77,15 +97,21 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
                 if (dX > dY || isUDOverScroll(ev)) {
                     intercepted = true
                 }
+                mLastX = x
+                mLastY = y
             }
             MotionEvent.ACTION_UP -> {
+                mVelocityTracker.clear()
+                intercepted = false
+            }
+            MotionEvent.ACTION_POINTER_UP -> {
+                onPointerUp(ev)
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                mVelocityTracker.clear()
                 intercepted = false
             }
         }
-        mLastX = x
-        mLastY = y
-        mLastInterceptX = x
-        mLastInterceptY = y
         return intercepted
     }
 
@@ -93,18 +119,38 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
         event ?: return true
         val child = getChildAt(0) ?: return true
 
-        mTracker.addMovement(event)
-        val x = event.x
-        val y = event.y
+        val action = event.actionMasked
+        val actionIndex = event.actionIndex
+        mVelocityTracker.addMovement(event)
 
-        when(event.action) {
+        when(action) {
             MotionEvent.ACTION_DOWN -> {
                 if (!mScroller.isFinished) {
                     mScroller.abortAnimation()
                 }
+
+                // 记录第一个手指头的触摸 iD
+                mScrollPointerId = event.getPointerId(0)
+                mLastX = event.x.also { mLastInterceptX = it }
+                mLastY = event.y.also { mLastInterceptY = it }
+            }
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                // 当屏幕上已经有手指头的时候，再按一个手指头下去就会触发这个事件
+                // 当第2个手指头点击屏幕的时候，就会用这个手指头来接管这次事件流
+                mScrollPointerId = event.getPointerId(actionIndex)
+                mLastX = event.getX(actionIndex).also { mLastInterceptX = it }
+                mLastY = event.getY(actionIndex).also { mLastInterceptY = it }
             }
             MotionEvent.ACTION_MOVE -> {
+                // 通过pointer id 拿到需要处理的 index
+                val pIdx = event.findPointerIndex(mScrollPointerId)
+                if (pIdx < 0) {
+                    JLog.e(TAG, "pointer index for id $mScrollPointerId not found. Did any MotionEvent get skipped?")
+                    return false
+                }
+                val x = event.getX(pIdx)
                 val deltaX = x - mLastX
+                val y = event.getY(pIdx)
                 val deltaY = y - mLastY
                 if (isTouchDirectionHorizontal(mTouchDirection)) {
                     if (isLROverScroll(event)) {
@@ -115,11 +161,13 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
                 } else {
                     scrollBy(0, -deltaY.roundToInt() / 2)
                 }
+                mLastX = x
+                mLastY = y
             }
             MotionEvent.ACTION_UP -> {
                 if (isTouchDirectionHorizontal(mTouchDirection)) {
-                    mTracker.computeCurrentVelocity(1000)
-                    val xVelocity = mTracker.xVelocity
+                    mVelocityTracker.computeCurrentVelocity(1000)
+                    val xVelocity = mVelocityTracker.xVelocity
                     child.let {
                         val childWidth = it.width
                         var childIdx = (scrollX / childWidth)
@@ -133,7 +181,7 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
                         val dx = childIdx * childWidth - scrollX
 
                         smoothScrollBy(dx, 0)
-                        mTracker.clear()
+                        mVelocityTracker.clear()
 
                         mChildCurIdx = childIdx
                     }
@@ -143,12 +191,31 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
 
                 mTouchDirection = DIRECTION_NONE
             }
+            MotionEvent.ACTION_POINTER_UP -> {
+                // 当手指头离开屏幕，同时屏幕上还有手指头的时候就会触发这个事件。
+                onPointerUp(event)
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                mVelocityTracker.clear()
+            }
         }
 
-        mLastX = x
-        mLastY = y
-
         return super.onTouchEvent(event)
+    }
+
+    private fun onPointerUp(e: MotionEvent?) {
+        e ?: return
+        val actionIndex = e.actionIndex
+        // 如果离开的那个点的id正好是我们接管触摸的那个点，那么我们就需要重新再找一个pointer来接管，反之不用管
+        if (e.getPointerId(actionIndex) == mScrollPointerId) {
+            // Pick a new pointer to pick up the slack.
+            val newIndex = if (actionIndex == 0) 1 else 0
+            mScrollPointerId = e.getPointerId(newIndex)
+            mLastX = e.getX(newIndex)
+            mLastInterceptX = mLastX
+            mLastY = e.getY(newIndex)
+            mLastInterceptY = mLastY
+        }
     }
 
     private fun smoothScrollBy(dx: Int, dy: Int) {
@@ -196,8 +263,10 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
                 childLeft += lp.marginStart
                 childTop += lp.topMargin
                 childBottom += lp.bottomMargin
-                view.layout(childLeft, childTop,
-                    childLeft + measuredWidth - paddingRight - lp.rightMargin, childTop + measuredHeight - childBottom)
+                view.layout(
+                    childLeft, childTop,
+                    childLeft + measuredWidth - paddingRight - lp.rightMargin, childTop + measuredHeight - childBottom
+                )
                 childLeft += measuredWidth + paddingRight + lp.rightMargin
             }
         }
