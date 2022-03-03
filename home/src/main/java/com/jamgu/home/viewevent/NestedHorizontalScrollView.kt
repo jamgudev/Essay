@@ -4,9 +4,13 @@ import android.content.Context
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.VelocityTracker
+import android.view.View
 import android.view.ViewGroup
 import android.widget.ScrollView
 import android.widget.Scroller
+import androidx.core.view.NestedScrollingParent3
+import androidx.core.view.NestedScrollingParentHelper
+import androidx.core.view.ViewCompat
 import androidx.core.view.children
 import androidx.core.view.isVisible
 import androidx.core.view.marginRight
@@ -21,10 +25,10 @@ private const val TAG = "HorizontalScrollView"
 /**
  * Created by jamgu on 2022/02/18
  *
- * 解决父-左右，子上下滑动冲突（异向）、同向以及混合滑动冲突场景
- * 兼容多点触摸事件【POINTER_DOWN, POINTER_UP】
+ * 在 [HorizontalScrollView] 的基础上，支持嵌套滑动
+ *
  */
-class HorizontalScrollView: ViewGroup, IOverScroll {
+class NestedHorizontalScrollView: ViewGroup, IOverScroll, NestedScrollingParent3 {
 
     private var mLastX = 0.0f
     private var mLastY = 0.0f
@@ -40,6 +44,9 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
     // 处理多点触碰，用于记录当前处理滑动的触摸点ID
     private var mScrollPointerId = 0
 
+    private var mParentHelper: NestedScrollingParentHelper? = null
+
+
     constructor(context: Context) : super(context) {
         init()
     }
@@ -52,6 +59,7 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
 
     private fun init() {
         setWillNotDraw(false)
+        mParentHelper = NestedScrollingParentHelper(this)
     }
 
     override fun onInterceptTouchEvent(ev: MotionEvent?): Boolean {
@@ -303,5 +311,66 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
             wholeWidth += it.width + it.marginStart + it.marginRight
         }
         return scrollX < 0 || scaleX > (wholeWidth + paddingRight + paddingLeft - width)
+    }
+
+    override fun onStartNestedScroll(child: View, target: View, axes: Int, type: Int): Boolean {
+        return axes and ViewCompat.SCROLL_AXIS_VERTICAL != 0
+    }
+
+    override fun onNestedScrollAccepted(child: View, target: View, axes: Int, type: Int) {
+        mParentHelper?.onNestedScrollAccepted(child, target, axes, type)
+    }
+
+    override fun onStopNestedScroll(target: View, type: Int) {
+        mParentHelper?.onStopNestedScroll(target, type)
+        if (type == ViewCompat.TYPE_NON_TOUCH) {
+            smoothScrollBy(0, -scrollY)
+        }
+    }
+
+    override fun onNestedScroll(
+        target: View,
+        dxConsumed: Int,
+        dyConsumed: Int,
+        dxUnconsumed: Int,
+        dyUnconsumed: Int,
+        type: Int,
+        consumed: IntArray
+    ) {
+        onNestedScrollInternal(dyUnconsumed, type, consumed)
+    }
+
+    override fun onNestedScroll(
+        target: View,
+        dxConsumed: Int,
+        dyConsumed: Int,
+        dxUnconsumed: Int,
+        dyUnconsumed: Int,
+        type: Int
+    ) {
+        onNestedScrollInternal(dyUnconsumed, type, null)
+    }
+
+    override fun onNestedPreScroll(target: View, dx: Int, dy: Int, consumed: IntArray, type: Int) {
+    }
+
+    @Synchronized
+    private fun onNestedScrollInternal(dyUnconsumed: Int, type: Int, consumed: IntArray?) {
+        if (type == ViewCompat.TYPE_NON_TOUCH) {
+            val oldScrollY = scrollY
+            scrollBy(0, dyUnconsumed)
+            val myConsumed = scrollY - oldScrollY
+            if (consumed != null) {
+                consumed[1] += myConsumed
+            }
+        } else {
+            if (consumed != null) {
+                consumed[1] += dyUnconsumed
+            }
+        }
+    }
+
+    override fun getNestedScrollAxes(): Int {
+        return super.getNestedScrollAxes()
     }
 }
