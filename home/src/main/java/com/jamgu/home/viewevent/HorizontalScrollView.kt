@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.VelocityTracker
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.ScrollView
 import android.widget.Scroller
@@ -40,6 +41,10 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
     // 处理多点触碰，用于记录当前处理滑动的触摸点ID
     private var mScrollPointerId = 0
 
+    private var mTouchSlop: Int = 0
+    private var mMinimumVelocity: Int = 0
+    private var mMaxmumVolocity: Int = 0
+
     constructor(context: Context) : super(context) {
         init()
     }
@@ -52,6 +57,11 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
 
     private fun init() {
         setWillNotDraw(false)
+        ViewConfiguration.get(context).let {
+            mTouchSlop = it.scaledTouchSlop
+            mMinimumVelocity = it.scaledMinimumFlingVelocity
+            mMaxmumVolocity = it.scaledMaximumFlingVelocity
+        }
     }
 
     override fun onInterceptTouchEvent(ev: MotionEvent?): Boolean {
@@ -95,7 +105,7 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
                         DIRECTION_DOWN
                     } else DIRECTION_UP
                 }
-                if (dX > dY || isUDOverScroll(ev)) {
+                if ((dX > dY && dY > mTouchSlop) || isUDOverScroll(ev)) {
                     intercepted = true
                 }
                 mLastX = x
@@ -152,7 +162,13 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
                 val x = event.getX(pIdx)
                 val deltaX = x - mLastX
                 val y = event.getY(pIdx)
-                val deltaY = y - mLastY
+                var deltaY = y - mLastY
+                // 处理 mTouchSlop 偏差
+                if (mTouchDirection == DIRECTION_DOWN && deltaY.absoluteValue >= mTouchSlop) {
+                    deltaY -= mTouchSlop
+                } else if (mTouchDirection == DIRECTION_UP && deltaY.absoluteValue >= mTouchSlop) {
+                    deltaY += mTouchSlop
+                }
                 if (isTouchDirectionHorizontal(mTouchDirection)) {
                     if (isLROverScroll(event)) {
                         scrollBy(-deltaX.roundToInt() / 2, 0)
