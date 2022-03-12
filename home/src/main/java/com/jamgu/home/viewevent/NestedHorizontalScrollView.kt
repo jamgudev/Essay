@@ -5,6 +5,7 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.ScrollView
 import android.widget.Scroller
@@ -18,9 +19,10 @@ import androidx.core.view.marginStart
 import androidx.recyclerview.widget.RecyclerView
 import com.jamgu.common.util.log.JLog
 import kotlin.math.absoluteValue
+import kotlin.math.pow
 import kotlin.math.roundToInt
 
-private const val TAG = "HorizontalScrollView"
+private const val TAG = "NestedHorizontalScrollView"
 
 /**
  * Created by jamgu on 2022/02/18
@@ -46,6 +48,15 @@ class NestedHorizontalScrollView: ViewGroup, IOverScroll, NestedScrollingParent3
 
     private var mParentHelper: NestedScrollingParentHelper? = null
 
+    private var mTouchSlop: Int = 0
+    private var mMinimumVelocity: Int = 0
+    private var mMaximumVelocity: Int = 0
+
+    // 阻尼滑动参数
+    private val mMaxDragRate = 2.5f
+    private val mMaxDragHeight = 250
+    private val mScreenHeightPixels = context.resources.displayMetrics.heightPixels
+//    private var mNeedPreConsumed = 0
 
     constructor(context: Context) : super(context) {
         init()
@@ -60,6 +71,11 @@ class NestedHorizontalScrollView: ViewGroup, IOverScroll, NestedScrollingParent3
     private fun init() {
         setWillNotDraw(false)
         mParentHelper = NestedScrollingParentHelper(this)
+        ViewConfiguration.get(context).let {
+            mTouchSlop = it.scaledTouchSlop
+            mMinimumVelocity = it.scaledMinimumFlingVelocity
+            mMaximumVelocity = it.scaledMaximumFlingVelocity
+        }
     }
 
     override fun onInterceptTouchEvent(ev: MotionEvent?): Boolean {
@@ -93,17 +109,18 @@ class NestedHorizontalScrollView: ViewGroup, IOverScroll, NestedScrollingParent3
                 }
                 val x = ev.getX(pIdx)
                 val y = ev.getY(pIdx)
-                val dX = (x - mLastInterceptX).absoluteValue
-                val dY = (y - mLastInterceptY).absoluteValue
+                val dX = (mLastInterceptX - x).absoluteValue
+                val dY = (mLastInterceptY - y).absoluteValue
+
                 mTouchDirection = if (dX > dY) {
-                    if (x - mLastX >= 0) DIRECTION_RIGHT
-                    else DIRECTION_LEFT
+                    if (mLastX - x >= 0) DIRECTION_LEFT
+                    else DIRECTION_RIGHT
                 } else {
-                    if (y - mLastY >= 0) {
-                        DIRECTION_DOWN
-                    } else DIRECTION_UP
+                    if (mLastY - y >= 0) {
+                        DIRECTION_UP
+                    } else DIRECTION_DOWN
                 }
-                if (dX > dY || isUDOverScroll(ev)) {
+                if ((dX > dY && dY > mTouchSlop) || isUDOverScroll(ev)) {
                     intercepted = true
                 }
                 mLastX = x
@@ -158,17 +175,24 @@ class NestedHorizontalScrollView: ViewGroup, IOverScroll, NestedScrollingParent3
                     return false
                 }
                 val x = event.getX(pIdx)
-                val deltaX = x - mLastX
+                val deltaX = mLastX - x
                 val y = event.getY(pIdx)
-                val deltaY = y - mLastY
+                var deltaY = mLastY - y
+                // 处理 mTouchSlop 偏差
+                if (mTouchDirection == DIRECTION_DOWN && deltaY.absoluteValue >= mTouchSlop) {
+                    deltaY += mTouchSlop
+                } else if (mTouchDirection == DIRECTION_UP && deltaY.absoluteValue >= mTouchSlop) {
+                    deltaY -= mTouchSlop
+                }
                 if (isTouchDirectionHorizontal(mTouchDirection)) {
                     if (isLROverScroll(event)) {
-                        scrollBy(-deltaX.roundToInt() / 2, 0)
+                        scrollBy(deltaX.roundToInt() / 2, 0)
                     } else {
-                        scrollBy(-deltaX.roundToInt(), 0)
+                        scrollBy(deltaX.roundToInt(), 0)
                     }
                 } else {
-                    scrollBy(0, -deltaY.roundToInt() / 2)
+                    // 竖直方向的过度滑动为：阻尼效果
+                    moveSpinnerDamping(deltaY)
                 }
                 mLastX = x
                 mLastY = y
@@ -187,7 +211,7 @@ class NestedHorizontalScrollView: ViewGroup, IOverScroll, NestedScrollingParent3
                             (scrollX + childWidth / 2) / childWidth
                         }
                         childIdx = childIdx.coerceAtLeast(0).coerceAtMost(childCount - 1)
-                        val dx = childIdx * childWidth - scrollX
+                        val dx = scrollX - childIdx * childWidth
 
                         smoothScrollBy(dx, 0)
                         mVelocityTracker.clear()
@@ -195,7 +219,7 @@ class NestedHorizontalScrollView: ViewGroup, IOverScroll, NestedScrollingParent3
                         mChildCurIdx = childIdx
                     }
                 } else {
-                    smoothScrollBy(0, -scrollY)
+                    smoothScrollBy(0, scrollY)
                 }
 
                 mTouchDirection = DIRECTION_NONE
@@ -227,8 +251,42 @@ class NestedHorizontalScrollView: ViewGroup, IOverScroll, NestedScrollingParent3
         }
     }
 
+    private fun moveSpinnerDamping(dy: Float) {
+        JLog.d(TAG, "dy = $dy")
+        if (dy >= 0) {
+            /**
+            final double M = mHeaderMaxDragRate < 10 ? mHeaderHeight * mHeaderMaxDragRate : mHeaderMaxDragRate;
+            final double H = Math.max(mScreenHeightPixels / 2, thisView.getHeight());
+            final double x = Math.max(0, spinner * mDragRate);
+            final double y = Math.min(M * (1 - Math.pow(100, -x / (H == 0 ? 1 : H))), x);// 公式 y = M(1-100^(-x/H))
+             */
+            val dragRate = 0.5f
+            val m = if (mMaxDragRate < 10) mMaxDragRate * mMaxDragHeight else mMaxDragRate
+            val h = (mScreenHeightPixels / 2).coerceAtLeast(this.height)
+            val x = (dy * dragRate).coerceAtLeast(0f)
+            val y = (m * (1 - 100f.pow(-x / if (h == 0) 1 else h))).coerceAtMost(x)
+            JLog.d(TAG, "down y = $y")
+            scrollBy(0, y.roundToInt())
+        } else {
+            /**
+            final float maxDragHeight = mFooterMaxDragRate < 10 ? mFooterHeight * mFooterMaxDragRate : mFooterMaxDragRate;
+            final double M = maxDragHeight - mFooterHeight;
+            final double H = Math.max(mScreenHeightPixels * 4 / 3, thisView.getHeight()) - mFooterHeight;
+            final double x = -Math.min(0, (spinner + mFooterHeight) * mDragRate);
+            final double y = -Math.min(M * (1 - Math.pow(100, -x / (H == 0 ? 1 : H))), x);// 公式 y = M(1-100^(-x/H))
+             */
+            val dragRate = 0.5f
+            val m = if (mMaxDragRate < 10) mMaxDragRate * mMaxDragHeight else mMaxDragRate
+            val h = (mScreenHeightPixels / 2).coerceAtLeast(this.height - mMaxDragHeight)
+            val x = -(dy * dragRate).coerceAtMost(0f)
+            val y = -((m * (1 - 100f.pow(-x / if (h == 0) 1 else h))).coerceAtMost(x))
+            JLog.d(TAG, "up y = $y")
+            scrollBy(0, y.roundToInt())
+        }
+    }
+
     private fun smoothScrollBy(dx: Int, dy: Int) {
-        mScroller.startScroll(scrollX, scrollY, dx, dy, 500)
+        mScroller.startScroll(scrollX, scrollY, -dx, -dy, 500)
         invalidate()
     }
 
@@ -301,7 +359,7 @@ class NestedHorizontalScrollView: ViewGroup, IOverScroll, NestedScrollingParent3
             }
         }
 
-        JLog.d(TAG, "isUDOverScroll = $isUDOverScroll")
+//        JLog.d(TAG, "isUDOverScroll = $isUDOverScroll")
         return isUDOverScroll
     }
 
@@ -324,7 +382,7 @@ class NestedHorizontalScrollView: ViewGroup, IOverScroll, NestedScrollingParent3
     override fun onStopNestedScroll(target: View, type: Int) {
         mParentHelper?.onStopNestedScroll(target, type)
         if (type == ViewCompat.TYPE_NON_TOUCH) {
-            smoothScrollBy(0, -scrollY)
+            smoothScrollBy(0, scrollY)
         }
     }
 
@@ -356,15 +414,18 @@ class NestedHorizontalScrollView: ViewGroup, IOverScroll, NestedScrollingParent3
 
     @Synchronized
     private fun onNestedScrollInternal(dyUnconsumed: Int, type: Int, consumed: IntArray?) {
+//        JLog.d(TAG, "type = $type")
         if (type == ViewCompat.TYPE_NON_TOUCH) {
             val oldScrollY = scrollY
-            scrollBy(0, dyUnconsumed)
-            val myConsumed = scrollY - oldScrollY
+            JLog.d(TAG, "dyUnconsumed = $dyUnconsumed")
+//            val fixedUnConsumed = dyUnconsumed.coerceAtMost(3).coerceAtLeast(-3)
+            moveSpinnerDamping(dyUnconsumed * 0.3f)
+            val myConsumed = dyUnconsumed
             if (consumed != null) {
                 consumed[1] += myConsumed
             }
         } else {
-            if (consumed != null) {
+            if (consumed != null && dyUnconsumed != 0) {
                 consumed[1] += dyUnconsumed
             }
         }
