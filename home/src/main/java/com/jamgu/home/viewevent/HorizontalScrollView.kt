@@ -15,6 +15,7 @@ import androidx.core.view.marginStart
 import androidx.recyclerview.widget.RecyclerView
 import com.jamgu.common.util.log.JLog
 import kotlin.math.absoluteValue
+import kotlin.math.pow
 import kotlin.math.roundToInt
 
 private const val TAG = "HorizontalScrollView"
@@ -23,7 +24,7 @@ private const val TAG = "HorizontalScrollView"
  * Created by jamgu on 2022/02/18
  *
  * 解决父-左右，子上下滑动冲突（异向）、同向以及混合滑动冲突场景
- * 兼容多点触摸事件【POINTER_DOWN, POINTER_UP】
+ * 兼容多点触摸事件【POINTER_DOWN, POINTER_UP】、过度阻尼滑动
  */
 class HorizontalScrollView: ViewGroup, IOverScroll {
 
@@ -43,7 +44,12 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
 
     private var mTouchSlop: Int = 0
     private var mMinimumVelocity: Int = 0
-    private var mMaxmumVolocity: Int = 0
+    private var mMaximumVelocity: Int = 0
+
+    // 阻尼滑动参数
+    private val mMaxDragRate = 2.5f
+    private val mMaxDragHeight = 250
+    private val mScreenHeightPixels = context.resources.displayMetrics.heightPixels
 
     constructor(context: Context) : super(context) {
         init()
@@ -60,7 +66,7 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
         ViewConfiguration.get(context).let {
             mTouchSlop = it.scaledTouchSlop
             mMinimumVelocity = it.scaledMinimumFlingVelocity
-            mMaxmumVolocity = it.scaledMaximumFlingVelocity
+            mMaximumVelocity = it.scaledMaximumFlingVelocity
         }
     }
 
@@ -171,12 +177,14 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
                 }
                 if (isTouchDirectionHorizontal(mTouchDirection)) {
                     if (isLROverScroll(event)) {
+                        // 水平过度滑动时，简单地让滑动距离为手指移动距离的 1 / 2
                         scrollBy(-deltaX.roundToInt() / 2, 0)
                     } else {
                         scrollBy(-deltaX.roundToInt(), 0)
                     }
                 } else {
-                    scrollBy(0, -deltaY.roundToInt() / 2)
+                    // 竖直方向的过度滑动为：阻尼效果
+                    moveSpinnerDamping(deltaY)
                 }
                 mLastX = x
                 mLastY = y
@@ -218,6 +226,39 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
         }
 
         return super.onTouchEvent(event)
+    }
+
+    private fun moveSpinnerDamping(dy: Float) {
+        if (dy >= 0) {
+            /**
+            final double M = mHeaderMaxDragRate < 10 ? mHeaderHeight * mHeaderMaxDragRate : mHeaderMaxDragRate;
+            final double H = Math.max(mScreenHeightPixels / 2, thisView.getHeight());
+            final double x = Math.max(0, spinner * mDragRate);
+            final double y = Math.min(M * (1 - Math.pow(100, -x / (H == 0 ? 1 : H))), x);// 公式 y = M(1-100^(-x/H))
+             */
+            val dragRate = 0.75f
+            val m = if (mMaxDragRate < 10) mMaxDragRate * mMaxDragHeight else mMaxDragRate
+            val h = (mScreenHeightPixels / 2).coerceAtLeast(this.height)
+            val x = (dy * dragRate).coerceAtLeast(0f)
+            val y = (m * (1 - 100f.pow(-x / if (h == 0) 1 else h))).coerceAtMost(x)
+            JLog.d(TAG, "down y = $y")
+            scrollBy(0, -y.roundToInt())
+        } else {
+            /**
+            final float maxDragHeight = mFooterMaxDragRate < 10 ? mFooterHeight * mFooterMaxDragRate : mFooterMaxDragRate;
+            final double M = maxDragHeight - mFooterHeight;
+            final double H = Math.max(mScreenHeightPixels * 4 / 3, thisView.getHeight()) - mFooterHeight;
+            final double x = -Math.min(0, (spinner + mFooterHeight) * mDragRate);
+            final double y = -Math.min(M * (1 - Math.pow(100, -x / (H == 0 ? 1 : H))), x);// 公式 y = M(1-100^(-x/H))
+             */
+            val dragRate = 0.5f
+            val m = if (mMaxDragRate < 10) mMaxDragRate * mMaxDragHeight else mMaxDragRate
+            val h = (mScreenHeightPixels / 2).coerceAtLeast(this.height - mMaxDragHeight)
+            val x = -(dy * dragRate).coerceAtMost(0f)
+            val y = -((m * (1 - 100f.pow(-x / if (h == 0) 1 else h))).coerceAtMost(x))
+            JLog.d(TAG, "up y = $y")
+            scrollBy(0, -y.roundToInt())
+        }
     }
 
     private fun onPointerUp(e: MotionEvent?) {
