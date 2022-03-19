@@ -120,7 +120,7 @@ class NestedHorizontalScrollView: ViewGroup, IOverScroll, NestedScrollingParent3
                         DIRECTION_UP
                     } else DIRECTION_DOWN
                 }
-                if ((dX > dY && dY > mTouchSlop) || isUDOverScroll(ev)) {
+                if ((dX > dY && dY > mTouchSlop) || isUDOverScroll()) {
                     intercepted = true
                 }
                 mLastX = x
@@ -185,7 +185,7 @@ class NestedHorizontalScrollView: ViewGroup, IOverScroll, NestedScrollingParent3
                     deltaY -= mTouchSlop
                 }
                 if (isTouchDirectionHorizontal(mTouchDirection)) {
-                    if (isLROverScroll(event)) {
+                    if (isLROverScroll()) {
                         scrollBy(deltaX.roundToInt() / 2, 0)
                     } else {
                         scrollBy(deltaX.roundToInt(), 0)
@@ -343,15 +343,13 @@ class NestedHorizontalScrollView: ViewGroup, IOverScroll, NestedScrollingParent3
         return MarginLayoutParams(context, attrs)
     }
 
-    override fun isUDOverScroll(ev: MotionEvent?): Boolean {
+    override fun isUDOverScroll(): Boolean {
         val childAt = getChildAt(mChildCurIdx) ?: return false
         var isUDOverScroll = false
 
         when(childAt) {
             is RecyclerView -> {
-                ev?.let {
-                    isUDOverScroll = isRecyclerViewAbout2OverScroll(childAt, mTouchDirection)
-                }
+                isUDOverScroll = isRecyclerViewAbout2OverScroll(childAt, mTouchDirection)
             }
 
             is ScrollView -> {
@@ -363,7 +361,7 @@ class NestedHorizontalScrollView: ViewGroup, IOverScroll, NestedScrollingParent3
         return isUDOverScroll
     }
 
-    override fun isLROverScroll(ev: MotionEvent?): Boolean {
+    override fun isLROverScroll(): Boolean {
         var wholeWidth = 0L
         children.forEach {
             wholeWidth += it.width + it.marginStart + it.marginRight

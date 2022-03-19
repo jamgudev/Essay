@@ -111,7 +111,7 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
                         DIRECTION_DOWN
                     } else DIRECTION_UP
                 }
-                if ((dX > dY && dY > mTouchSlop) || isUDOverScroll(ev)) {
+                if ((dX > dY && dY > mTouchSlop) || isUDOverScroll()) {
                     intercepted = true
                 }
                 mLastX = x
@@ -176,7 +176,7 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
                     deltaY += mTouchSlop
                 }
                 if (isTouchDirectionHorizontal(mTouchDirection)) {
-                    if (isLROverScroll(event)) {
+                    if (isLROverScroll()) {
                         // 水平过度滑动时，简单地让滑动距离为手指移动距离的 1 / 2
                         scrollBy(-deltaX.roundToInt() / 2, 0)
                     } else {
@@ -334,15 +334,13 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
         return MarginLayoutParams(context, attrs)
     }
 
-    override fun isUDOverScroll(ev: MotionEvent?): Boolean {
+    override fun isUDOverScroll(): Boolean {
         val childAt = getChildAt(mChildCurIdx) ?: return false
         var isUDOverScroll = false
 
         when(childAt) {
             is RecyclerView -> {
-                ev?.let {
-                    isUDOverScroll = isRecyclerViewAbout2OverScroll(childAt, mTouchDirection)
-                }
+                isUDOverScroll = isRecyclerViewAbout2OverScroll(childAt, mTouchDirection)
             }
 
             is ScrollView -> {
@@ -354,7 +352,7 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
         return isUDOverScroll
     }
 
-    override fun isLROverScroll(ev: MotionEvent?): Boolean {
+    override fun isLROverScroll(): Boolean {
         var wholeWidth = 0L
         children.forEach {
             wholeWidth += it.width + it.marginStart + it.marginRight

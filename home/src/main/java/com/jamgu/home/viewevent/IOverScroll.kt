@@ -21,12 +21,12 @@ interface IOverScroll {
     /**
      * 上下方向是否超过滑动范围
      */
-    fun isUDOverScroll(ev: MotionEvent?): Boolean
+    fun isUDOverScroll(): Boolean
 
     /**
      * 左右方向是否超过滑动范围
      */
-    fun isLROverScroll(ev: MotionEvent?): Boolean
+    fun isLROverScroll(): Boolean
 
     /**
      * Only vertical linear manager is supported.
