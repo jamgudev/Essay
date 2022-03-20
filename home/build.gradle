@@ -60,5 +60,5 @@ dependencies {
     // ViewModel and LiveData
     implementation 'androidx.lifecycle:lifecycle-extensions:2.2.0'
     api 'io.github.jamgudev:common:0.6.0'
-    implementation 'io.github.jamgudev:settingpie:1.0.0'
+    implementation 'io.github.jamgudev:settingpie:1.0.1'
 }

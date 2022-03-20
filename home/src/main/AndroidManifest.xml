@@ -16,6 +16,7 @@
                 android:taskAffinity="com.jamgu.test2" />
 
         <activity android:name=".viewevent.ViewEventActivity" />
+        <activity android:name=".viewevent.ViewEventActivity2" />
 
         <service
                 android:name=".jobscheduler.MJobService"

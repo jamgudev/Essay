@@ -37,5 +37,6 @@ class Schemes {
 
     object ViewEventPage {
         const val HOST_NAME = "event_page"
+        const val HOST_NAME2 = "event_page2"
     }
 }

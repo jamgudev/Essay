@@ -5,7 +5,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
-    <com.jamgu.home.viewevent.NestedHorizontalScrollView2
+    <com.jamgu.home.viewevent.NestedHorizontalScrollView
             android:id="@+id/eventView"
             android:layout_width="match_parent"
             android:layout_height="match_parent">
@@ -31,6 +31,6 @@
                     android:layout_width="match_parent"
                     android:layout_height="match_parent" />
 
-    </com.jamgu.home.viewevent.NestedHorizontalScrollView2>
+    </com.jamgu.home.viewevent.NestedHorizontalScrollView>
 
 </androidx.appcompat.widget.LinearLayoutCompat>
