@@ -7,6 +7,6 @@ import android.view.View
  */
 interface IRefreshComponent: IOnRefreshStateChangedListener {
 
-    fun getView(): View?
+    fun getView(): View
 
 }

@@ -6,5 +6,5 @@ import com.jamgu.home.viewevent.simplesmtart.api.IRefreshHeader
 /**
  * Created by jamgu on 2022/03/20
  */
-class RefreshFooterWrapper(view: View?): SimpleComponent(view), IRefreshHeader {
+class RefreshFooterWrapper(view: View): SimpleComponent(view), IRefreshHeader {
 }

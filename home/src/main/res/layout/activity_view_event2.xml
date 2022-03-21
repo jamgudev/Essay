@@ -10,11 +10,35 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent">
 
-            <com.jamgu.home.viewevent.EventRecyclerView
-                    android:id="@+id/vRecycler1"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:gravity="center" />
+        <com.jamgu.home.viewevent.simplesmtart.ClassicHeader
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+            <androidx.appcompat.widget.AppCompatTextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_centerInParent="true"
+                    android:text="header" />
+
+        </com.jamgu.home.viewevent.simplesmtart.ClassicHeader>
+
+        <com.jamgu.home.viewevent.EventRecyclerView
+                android:id="@+id/vRecycler1"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center" />
+
+        <com.jamgu.home.viewevent.simplesmtart.ClassicFooter
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+            <androidx.appcompat.widget.AppCompatTextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_centerInParent="true"
+                    android:text="footer" />
+
+        </com.jamgu.home.viewevent.simplesmtart.ClassicFooter>
 
     </com.jamgu.home.viewevent.simplesmtart.NestedHorizontalScrollView2>
 
