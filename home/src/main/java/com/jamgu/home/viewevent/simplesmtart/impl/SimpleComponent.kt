@@ -12,7 +12,7 @@ import com.jamgu.home.viewevent.simplesmtart.api.IRefreshComponent
  */
 open class SimpleComponent : RelativeLayout, IRefreshComponent {
 
-    protected lateinit var mWrappedView: View
+    protected var mWrappedView: View? = null
     protected var mWrappedComponent: IRefreshComponent? = null
 
     protected constructor(wrappedView: View) : this(wrappedView, null)
@@ -22,7 +22,7 @@ open class SimpleComponent : RelativeLayout, IRefreshComponent {
         null,
         0
     ) {
-        this.mWrappedView = mWrappedView
+        this.mWrappedView = wrappedView
         this.mWrappedComponent = mWrappedComponent
     }
 

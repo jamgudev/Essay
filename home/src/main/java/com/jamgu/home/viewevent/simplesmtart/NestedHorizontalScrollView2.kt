@@ -23,6 +23,7 @@ import com.jamgu.home.viewevent.simplesmtart.api.IRefreshHeader
 import com.jamgu.home.viewevent.simplesmtart.impl.RefreshContentWrapper
 import com.jamgu.home.viewevent.simplesmtart.impl.RefreshFooterWrapper
 import com.jamgu.home.viewevent.simplesmtart.impl.RefreshHeaderWrapper
+import com.jamgu.home.viewevent.simplesmtart.util.SmartUtil
 import com.jamgu.home.viewevent.simplesmtart.util.WidgetUtil
 import kotlin.math.absoluteValue
 import kotlin.math.pow
@@ -106,10 +107,11 @@ class NestedHorizontalScrollView2 : ViewGroup, NestedScrollingParent3 {
         }
 
         for (i in 0 until childCount) {
-            when (val childView = super.getChildAt(i)) {
-                is IRefreshContent -> {
-                    mRefreshContent = RefreshContentWrapper(childView)
-                }
+            val childView = super.getChildAt(i)
+            if (SmartUtil.isContentView(childView)) {
+                mRefreshContent = RefreshContentWrapper(childView)
+            }
+            when (childView) {
                 is IRefreshHeader -> {
                     mRefreshHeader = RefreshHeaderWrapper(childView)
                 }
@@ -125,175 +127,6 @@ class NestedHorizontalScrollView2 : ViewGroup, NestedScrollingParent3 {
         // 让 contentView 显示在最前面
         if (mRefreshContent != null) {
             super.bringChildToFront(mRefreshContent?.getContentView())
-        }
-    }
-
-    override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
-        ev ?: return false
-
-        val actionIndex = ev.actionIndex
-        // action without idx
-        val action = ev.actionMasked
-
-        val thisView = this
-//        if (!thisView.isEnabled) {
-//            return super.dispatchTouchEvent(ev)
-//        }
-        // 如果此 View 在嵌套滑动的状态，则不需要往下走，按正常嵌套滑动的流程走
-        if (mNestedInProgress) {
-            // 如果正在进行嵌套滑动
-            JLog.d(TAG, "mNestedInProgress = $mNestedInProgress, 按正常嵌套滑动流程走")
-            return super.dispatchTouchEvent(ev)
-        } else if (!thisView.isEnabled || !mIsAllowOverScroll) {
-            // 如果此View不可用，或不支持嵌套滑动，正常分发
-            return super.dispatchTouchEvent(ev)
-        }
-
-        JLog.d(TAG, "不在嵌套滑动流程：可能是 down事件，或者自己处理滑动事件")
-        when (action) {
-            MotionEvent.ACTION_DOWN -> {
-                if (!mScroller.isFinished) {
-                    mScroller.abortAnimation()
-                }
-                mScrollPointerId = ev.getPointerId(0)
-
-                // 触摸事件初始化
-                mTouchX = ev.x
-                mTouchY = ev.y
-
-                mSuperDispatchTouchEvent = super.dispatchTouchEvent(ev)
-                return true
-            }
-            MotionEvent.ACTION_POINTER_DOWN -> {
-                mScrollPointerId = ev.getPointerId(actionIndex)
-                mTouchX = ev.getX(actionIndex)
-                mTouchY = ev.getY(actionIndex)
-            }
-            MotionEvent.ACTION_MOVE -> {
-                val pIdx = ev.findPointerIndex(mScrollPointerId)
-                if (pIdx < 0) {
-                    JLog.e(TAG, "pointer index for id $mScrollPointerId not found. Did any MotionEvent get skipped?")
-                    return false
-                }
-                val touchX = ev.getX(pIdx)
-                val touchY = ev.getY(pIdx)
-                val dx = touchX - mTouchX
-                var dy = touchY - mTouchY
-
-                if (dx.absoluteValue < dy.absoluteValue) {
-                    if (dy > 0 && dy > mTouchSlop) {
-                        mIsBeingDragged = true
-                        dy -= mTouchSlop
-                    } else if (dy < 0 && dy < -mTouchSlop) {
-                        mIsBeingDragged = true
-                        dy += mTouchSlop
-                    }
-
-                    if (mIsBeingDragged) {
-                        // 如果事件经过正常分发后，被别的控件消耗了事件
-                        // 分发一个取消事件
-                        if (mSuperDispatchTouchEvent) {
-                            ev.action = MotionEvent.ACTION_CANCEL
-                            super.dispatchTouchEvent(ev)
-                        }
-                        val parent = thisView.parent
-                        if (parent is ViewGroup) {
-                            // 通知父控件不要拦截事件
-                            parent.requestDisallowInterceptTouchEvent(true)
-                        }
-                    }
-                }
-
-                JLog.d(TAG, "mIsBeingDragged = $mIsBeingDragged")
-                if (mIsBeingDragged) {
-                    JLog.d(TAG, "dispatchTouchEvent dy = $dy, touchY = $touchY, mTouchY = $mTouchY")
-                    compute2Moving(dy.roundToInt())
-                    return true
-                }
-
-            }
-            MotionEvent.ACTION_UP -> {
-                mVelocityTracker.addMovement(ev)
-                mVelocityTracker.computeCurrentVelocity(1000, mMaximumVelocity)
-                mCurrentVelocity = mVelocityTracker.yVelocity
-//                startFlingIfNeed(0f)
-            }
-            MotionEvent.ACTION_POINTER_UP -> {
-                onPointerUp(ev)
-            }
-            MotionEvent.ACTION_CANCEL -> {
-                if (mIsBeingDragged) {
-                    mIsBeingDragged = false
-                    return true
-                }
-            }
-        }
-
-        return super.dispatchTouchEvent(ev)
-    }
-
-    private fun onPointerUp(e: MotionEvent?) {
-        e ?: return
-        val actionIndex = e.actionIndex
-        // 如果离开的那个点的id正好是我们接管触摸的那个点，那么我们就需要重新再找一个pointer来接管，反之不用管
-        if (e.getPointerId(actionIndex) == mScrollPointerId) {
-            // Pick a new pointer to pick up the slack.
-            val newIndex = if (actionIndex == 0) 1 else 0
-            mScrollPointerId = e.getPointerId(newIndex)
-            mTouchX = e.getX(newIndex)
-            mTouchY = e.getY(newIndex)
-        }
-    }
-
-
-    private fun compute2Moving(translationY: Int) {
-        JLog.d(TAG, "dy = $translationY")
-        if (translationY >= 0) {
-            /**
-            final double M = mHeaderMaxDragRate < 10 ? mHeaderHeight * mHeaderMaxDragRate : mHeaderMaxDragRate;
-            final double H = Math.max(mScreenHeightPixels / 2, thisView.getHeight());
-            final double x = Math.max(0, spinner * mDragRate);
-            final double y = Math.min(M * (1 - Math.pow(100, -x / (H == 0 ? 1 : H))), x);// 公式 y = M(1-100^(-x/H))
-             */
-            val dragRate = 0.5f
-            val m = if (mMaxDragRate < 10) mMaxDragRate * mMaxDragHeight else mMaxDragRate
-            val h = (mScreenHeightPixels / 2).coerceAtLeast(this.height)
-            val x = (translationY * dragRate).coerceAtLeast(0f)
-            val y = (m * (1 - 100f.pow(-x / if (h == 0) 1 else h))).coerceAtMost(x)
-            JLog.d(TAG, "down y = $y")
-            moveTranslation(y)
-        } else {
-            /**
-            final float maxDragHeight = mFooterMaxDragRate < 10 ? mFooterHeight * mFooterMaxDragRate : mFooterMaxDragRate;
-            final double M = maxDragHeight - mFooterHeight;
-            final double H = Math.max(mScreenHeightPixels * 4 / 3, thisView.getHeight()) - mFooterHeight;
-            final double x = -Math.min(0, (spinner + mFooterHeight) * mDragRate);
-            final double y = -Math.min(M * (1 - Math.pow(100, -x / (H == 0 ? 1 : H))), x);// 公式 y = M(1-100^(-x/H))
-             */
-            val dragRate = 0.5f
-            val m = if (mMaxDragRate < 10) mMaxDragRate * mMaxDragHeight else mMaxDragRate
-            val h = (mScreenHeightPixels / 2).coerceAtLeast(this.height)
-            val x = -(translationY * dragRate).coerceAtMost(0f)
-            val y = -((m * (1 - 100f.pow(-x / if (h == 0) 1 else h))).coerceAtMost(x))
-            JLog.d(TAG, "up y = $y")
-//            scrollBy(0, -y.roundToInt())
-            moveTranslation(y)
-        }
-    }
-
-    private fun moveTranslation(dy: Float) {
-        getChildAt(0).translationY = dy
-    }
-
-    private fun smoothScrollBy(dx: Int, dy: Int) {
-        mScroller.startScroll(scrollX, scrollY, -dx, -dy, 500)
-        invalidate()
-    }
-
-    override fun computeScroll() {
-        if (mScroller.computeScrollOffset()) {
-            scrollTo(mScroller.currX, mScroller.currY)
-            postInvalidate()
         }
     }
 
@@ -451,6 +284,175 @@ class NestedHorizontalScrollView2 : ViewGroup, NestedScrollingParent3 {
                     contentView.layout(left, top, right, bottom)
                 }
             }
+
+        }
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
+        ev ?: return false
+
+        val actionIndex = ev.actionIndex
+        // action without idx
+        val action = ev.actionMasked
+
+        val thisView = this
+        // 如果此 View 在嵌套滑动的状态，则不需要往下走，按正常嵌套滑动的流程走
+        if (mNestedInProgress) {
+            // 如果正在进行嵌套滑动
+            JLog.d(TAG, "mNestedInProgress = $mNestedInProgress, 按正常嵌套滑动流程走")
+            return super.dispatchTouchEvent(ev)
+        } else if (!thisView.isEnabled || !mIsAllowOverScroll) {
+            // 如果此View不可用，或不支持嵌套滑动，正常分发
+            return super.dispatchTouchEvent(ev)
+        }
+
+        JLog.d(TAG, "不在嵌套滑动流程：可能是 down事件，或者自己处理滑动事件")
+        when (action) {
+            MotionEvent.ACTION_DOWN -> {
+                if (!mScroller.isFinished) {
+                    mScroller.abortAnimation()
+                }
+                mScrollPointerId = ev.getPointerId(0)
+
+                // 触摸事件初始化
+                mTouchX = ev.x
+                mTouchY = ev.y
+
+                mSuperDispatchTouchEvent = super.dispatchTouchEvent(ev)
+                return true
+            }
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                mScrollPointerId = ev.getPointerId(actionIndex)
+                mTouchX = ev.getX(actionIndex)
+                mTouchY = ev.getY(actionIndex)
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val pIdx = ev.findPointerIndex(mScrollPointerId)
+                if (pIdx < 0) {
+                    JLog.e(TAG, "pointer index for id $mScrollPointerId not found. Did any MotionEvent get skipped?")
+                    return false
+                }
+                val touchX = ev.getX(pIdx)
+                val touchY = ev.getY(pIdx)
+                val dx = touchX - mTouchX
+                var dy = touchY - mTouchY
+
+                if (dx.absoluteValue < dy.absoluteValue) {
+                    if (dy > 0 && dy > mTouchSlop) {
+                        mIsBeingDragged = true
+                        dy -= mTouchSlop
+                    } else if (dy < 0 && dy < -mTouchSlop) {
+                        mIsBeingDragged = true
+                        dy += mTouchSlop
+                    }
+
+                    if (mIsBeingDragged) {
+                        // 如果事件经过正常分发后，被别的控件消耗了事件
+                        // 分发一个取消事件
+                        if (mSuperDispatchTouchEvent) {
+                            ev.action = MotionEvent.ACTION_CANCEL
+                            super.dispatchTouchEvent(ev)
+                        }
+                        val parent = thisView.parent
+                        if (parent is ViewGroup) {
+                            // 通知父控件不要拦截事件
+                            parent.requestDisallowInterceptTouchEvent(true)
+                        }
+                    }
+                }
+
+                JLog.d(TAG, "mIsBeingDragged = $mIsBeingDragged")
+                if (mIsBeingDragged) {
+                    JLog.d(TAG, "dispatchTouchEvent dy = $dy, touchY = $touchY, mTouchY = $mTouchY")
+                    compute2Moving(dy.roundToInt())
+                    return true
+                }
+
+            }
+            MotionEvent.ACTION_UP -> {
+                mVelocityTracker.addMovement(ev)
+                mVelocityTracker.computeCurrentVelocity(1000, mMaximumVelocity)
+                mCurrentVelocity = mVelocityTracker.yVelocity
+//                startFlingIfNeed(0f)
+            }
+            MotionEvent.ACTION_POINTER_UP -> {
+                onPointerUp(ev)
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                if (mIsBeingDragged) {
+                    mIsBeingDragged = false
+                    return true
+                }
+            }
+        }
+
+        return super.dispatchTouchEvent(ev)
+    }
+
+    private fun onPointerUp(e: MotionEvent?) {
+        e ?: return
+        val actionIndex = e.actionIndex
+        // 如果离开的那个点的id正好是我们接管触摸的那个点，那么我们就需要重新再找一个pointer来接管，反之不用管
+        if (e.getPointerId(actionIndex) == mScrollPointerId) {
+            // Pick a new pointer to pick up the slack.
+            val newIndex = if (actionIndex == 0) 1 else 0
+            mScrollPointerId = e.getPointerId(newIndex)
+            mTouchX = e.getX(newIndex)
+            mTouchY = e.getY(newIndex)
+        }
+    }
+
+
+    private fun compute2Moving(translationY: Int) {
+        JLog.d(TAG, "dy = $translationY")
+        if (translationY >= 0) {
+            /**
+            final double M = mHeaderMaxDragRate < 10 ? mHeaderHeight * mHeaderMaxDragRate : mHeaderMaxDragRate;
+            final double H = Math.max(mScreenHeightPixels / 2, thisView.getHeight());
+            final double x = Math.max(0, spinner * mDragRate);
+            final double y = Math.min(M * (1 - Math.pow(100, -x / (H == 0 ? 1 : H))), x);// 公式 y = M(1-100^(-x/H))
+             */
+            val dragRate = 0.5f
+            val m = if (mMaxDragRate < 10) mMaxDragRate * mMaxDragHeight else mMaxDragRate
+            val h = (mScreenHeightPixels / 2).coerceAtLeast(this.height)
+            val x = (translationY * dragRate).coerceAtLeast(0f)
+            val y = (m * (1 - 100f.pow(-x / if (h == 0) 1 else h))).coerceAtMost(x)
+            JLog.d(TAG, "down y = $y")
+            moveTranslation(y)
+        } else {
+            /**
+            final float maxDragHeight = mFooterMaxDragRate < 10 ? mFooterHeight * mFooterMaxDragRate : mFooterMaxDragRate;
+            final double M = maxDragHeight - mFooterHeight;
+            final double H = Math.max(mScreenHeightPixels * 4 / 3, thisView.getHeight()) - mFooterHeight;
+            final double x = -Math.min(0, (spinner + mFooterHeight) * mDragRate);
+            final double y = -Math.min(M * (1 - Math.pow(100, -x / (H == 0 ? 1 : H))), x);// 公式 y = M(1-100^(-x/H))
+             */
+            val dragRate = 0.5f
+            val m = if (mMaxDragRate < 10) mMaxDragRate * mMaxDragHeight else mMaxDragRate
+            val h = (mScreenHeightPixels / 2).coerceAtLeast(this.height)
+            val x = -(translationY * dragRate).coerceAtMost(0f)
+            val y = -((m * (1 - 100f.pow(-x / if (h == 0) 1 else h))).coerceAtMost(x))
+            JLog.d(TAG, "up y = $y")
+//            scrollBy(0, -y.roundToInt())
+            moveTranslation(y)
+        }
+    }
+
+    private fun moveTranslation(dy: Float) {
+        for (i in 0 until super.getChildCount()) {
+            super.getChildAt(i).translationY = dy
+        }
+    }
+
+    private fun smoothScrollBy(dx: Int, dy: Int) {
+        mScroller.startScroll(scrollX, scrollY, -dx, -dy, 500)
+        invalidate()
+    }
+
+    override fun computeScroll() {
+        if (mScroller.computeScrollOffset()) {
+            scrollTo(mScroller.currX, mScroller.currY)
+            postInvalidate()
         }
     }
 
