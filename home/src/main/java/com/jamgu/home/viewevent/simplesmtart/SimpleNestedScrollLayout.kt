@@ -1,5 +1,8 @@
 package com.jamgu.home.viewevent.simplesmtart
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ValueAnimator
 import android.content.Context
 import android.util.AttributeSet
 import android.view.MotionEvent
@@ -10,6 +13,7 @@ import android.view.View.MeasureSpec.EXACTLY
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+import android.view.animation.Interpolator
 import android.widget.Scroller
 import androidx.core.view.NestedScrollingParent3
 import androidx.core.view.NestedScrollingParentHelper
@@ -23,9 +27,12 @@ import com.jamgu.home.viewevent.simplesmtart.api.IRefreshHeader
 import com.jamgu.home.viewevent.simplesmtart.impl.RefreshContentWrapper
 import com.jamgu.home.viewevent.simplesmtart.impl.RefreshFooterWrapper
 import com.jamgu.home.viewevent.simplesmtart.impl.RefreshHeaderWrapper
+import com.jamgu.home.viewevent.simplesmtart.interpolator.INTERPOLATOR_VISCOUS_FLUID
+import com.jamgu.home.viewevent.simplesmtart.interpolator.ReboundInterpolator
 import com.jamgu.home.viewevent.simplesmtart.util.SmartUtil
 import com.jamgu.home.viewevent.simplesmtart.util.WidgetUtil
 import kotlin.math.absoluteValue
+import kotlin.math.log
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
@@ -37,7 +44,7 @@ private const val TAG = "NestedHorizontalScrollView2"
  * 在 [com.jamgu.home.viewevent.HorizontalScrollView] 的基础上，支持嵌套滑动
  *
  */
-class NestedHorizontalScrollView2 : ViewGroup, NestedScrollingParent3 {
+class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
 
     // 上一次触碰的位置
     private var mTouchX = 0f
@@ -65,13 +72,16 @@ class NestedHorizontalScrollView2 : ViewGroup, NestedScrollingParent3 {
     private val mMaxDragRate = 2.5f
     private val mMaxDragHeight = 250
     private val mScreenHeightPixels = context.resources.displayMetrics.heightPixels
-//    private var mNeedPreConsumed = 0
 
     private var mIsBeingDragged = false
     private var mSuperDispatchTouchEvent = false
     private var mNestedInProgress = false
     private var mIsAllowOverScroll = true       // 是否允许过渡滑动
     private var mPreConsumedNeeded = 0          // 在子 View 滑动前，此View需要滑动的距离
+    private var mSpinner = 0f                    // 当前竖直方向上 translationY 的距离
+
+    private var mReboundAnimator: ValueAnimator? = null
+    private var mReboundInterpolator = ReboundInterpolator(INTERPOLATOR_VISCOUS_FLUID)
 
     private var mRefreshContent: IRefreshContent? = null
     private var mRefreshHeader: IRefreshComponent? = null
@@ -128,6 +138,17 @@ class NestedHorizontalScrollView2 : ViewGroup, NestedScrollingParent3 {
         if (mRefreshContent != null) {
             super.bringChildToFront(mRefreshContent?.getContentView())
         }
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        mReboundAnimator?.let {
+            it.removeAllUpdateListeners()
+            it.removeAllListeners()
+            it.duration = 0
+            it.cancel()
+        }
+        mReboundAnimator = null
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -299,11 +320,15 @@ class NestedHorizontalScrollView2 : ViewGroup, NestedScrollingParent3 {
         // 如果此 View 在嵌套滑动的状态，则不需要往下走，按正常嵌套滑动的流程走
         if (mNestedInProgress) {
             // 如果正在进行嵌套滑动
-            JLog.d(TAG, "mNestedInProgress = $mNestedInProgress, 按正常嵌套滑动流程走")
+//            JLog.d(TAG, "mNestedInProgress = $mNestedInProgress, 按正常嵌套滑动流程走")
             return super.dispatchTouchEvent(ev)
         } else if (!thisView.isEnabled || !mIsAllowOverScroll) {
             // 如果此View不可用，或不支持嵌套滑动，正常分发
             return super.dispatchTouchEvent(ev)
+        }
+
+        if (interceptReboundByAction(action)) {
+            return false
         }
 
         JLog.d(TAG, "不在嵌套滑动流程：可能是 down事件，或者自己处理滑动事件")
@@ -361,7 +386,6 @@ class NestedHorizontalScrollView2 : ViewGroup, NestedScrollingParent3 {
                     }
                 }
 
-                JLog.d(TAG, "mIsBeingDragged = $mIsBeingDragged")
                 if (mIsBeingDragged) {
                     JLog.d(TAG, "dispatchTouchEvent dy = $dy, touchY = $touchY, mTouchY = $mTouchY")
                     compute2Moving(dy.roundToInt())
@@ -389,6 +413,17 @@ class NestedHorizontalScrollView2 : ViewGroup, NestedScrollingParent3 {
         return super.dispatchTouchEvent(ev)
     }
 
+    private fun interceptReboundByAction(action: Int): Boolean {
+        if (action == MotionEvent.ACTION_DOWN) {
+            mReboundAnimator?.let {
+                it.duration = 0
+                it.cancel()
+            }
+            mReboundAnimator = null
+        }
+        return mReboundAnimator != null
+    }
+
     private fun onPointerUp(e: MotionEvent?) {
         e ?: return
         val actionIndex = e.actionIndex
@@ -402,9 +437,79 @@ class NestedHorizontalScrollView2 : ViewGroup, NestedScrollingParent3 {
         }
     }
 
+    private fun overSpinner() {
+        animSpinner(0f, 0, mReboundInterpolator, 1000)
+    }
+
+    private fun animSpinner(
+        endSpinner: Float,
+        startDelay: Long,
+        interpolator: Interpolator?,
+        duration: Long
+    ): ValueAnimator? {
+        if (mSpinner != endSpinner) {
+            JLog.d(TAG, "start anim")
+            mReboundAnimator?.let {
+                it.duration = 0
+                it.cancel()
+            }
+            mReboundAnimator = null
+            val endListener = object: AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator?) {
+                    // cancel() 会导致 onAnimationEnd，通过设置duration = 0 来标记动画被取消
+                    if (animation != null && animation.duration == 0L) {
+                        return
+                    }
+
+                    mReboundAnimator?.let {
+                        it.removeAllUpdateListeners()
+                        it.removeAllListeners()
+                    }
+                    mReboundAnimator = null
+                }
+            }
+            val updateListener = ValueAnimator.AnimatorUpdateListener {
+                val spinner = it.animatedValue as? Int ?: 0
+                moveTranslation(spinner.toFloat())
+            }
+            ValueAnimator.ofInt(mSpinner.roundToInt(), endSpinner.roundToInt())
+                    .also { mReboundAnimator = it }.let {
+                        it.duration = duration
+                        it.interpolator = interpolator
+                        it.startDelay = startDelay
+                        it.addListener(endListener)
+                        it.addUpdateListener(updateListener)
+                        it.start()
+                    }
+
+            return mReboundAnimator
+        }
+
+        return null
+    }
+
+    private fun reverseCompute(spinner: Float): Int {
+        var x = 0
+        if (spinner >= 0) {
+            // X = -H * log((1 - y / m), 100)
+            val dragRate = 0.5f
+            val m = if (mMaxDragRate < 10) mMaxDragRate * mMaxDragHeight else mMaxDragRate
+            val h = (mScreenHeightPixels / 2).coerceAtLeast(this.height)
+            val y = spinner
+            JLog.d(TAG, "reverse ${(-h * log((1 - y / m), 100f))}")
+            x = ((-h * log((1 - y / m), 100f)) / dragRate).roundToInt()
+        } else {
+            val dragRate = 0.5f
+            val m = if (mMaxDragRate < 10) mMaxDragRate * mMaxDragHeight else mMaxDragRate
+            val h = (mScreenHeightPixels / 2).coerceAtLeast(this.height)
+            val y = -spinner
+            x = -((-h * log((1 - y / m), 100f)) / dragRate).roundToInt()
+        }
+        return x
+    }
 
     private fun compute2Moving(translationY: Int) {
-        JLog.d(TAG, "dy = $translationY")
+//        JLog.d(TAG, "dy = $translationY")
         if (translationY >= 0) {
             /**
             final double M = mHeaderMaxDragRate < 10 ? mHeaderHeight * mHeaderMaxDragRate : mHeaderMaxDragRate;
@@ -417,7 +522,7 @@ class NestedHorizontalScrollView2 : ViewGroup, NestedScrollingParent3 {
             val h = (mScreenHeightPixels / 2).coerceAtLeast(this.height)
             val x = (translationY * dragRate).coerceAtLeast(0f)
             val y = (m * (1 - 100f.pow(-x / if (h == 0) 1 else h))).coerceAtMost(x)
-            JLog.d(TAG, "down y = $y")
+//            JLog.d(TAG, "down y = $y")
             moveTranslation(y)
         } else {
             /**
@@ -432,13 +537,14 @@ class NestedHorizontalScrollView2 : ViewGroup, NestedScrollingParent3 {
             val h = (mScreenHeightPixels / 2).coerceAtLeast(this.height)
             val x = -(translationY * dragRate).coerceAtMost(0f)
             val y = -((m * (1 - 100f.pow(-x / if (h == 0) 1 else h))).coerceAtMost(x))
-            JLog.d(TAG, "up y = $y")
+//            JLog.d(TAG, "up y = $y")
 //            scrollBy(0, -y.roundToInt())
             moveTranslation(y)
         }
     }
 
     private fun moveTranslation(dy: Float) {
+        mSpinner = dy
         for (i in 0 until super.getChildCount()) {
             super.getChildAt(i).translationY = dy
         }
@@ -466,15 +572,24 @@ class NestedHorizontalScrollView2 : ViewGroup, NestedScrollingParent3 {
 
     override fun onNestedScrollAccepted(child: View, target: View, axes: Int, type: Int) {
         mParentHelper?.onNestedScrollAccepted(child, target, axes, type)
+//        mPreConsumedNeeded = mSpinner.roundToInt()
         mNestedInProgress = true
+        mPreConsumedNeeded = reverseCompute(mSpinner)
+        JLog.d(TAG, "onNestedScrollAccepted, type = $type, mSpinner = $mSpinner," +
+                " mPreConsumedNeeded = $mPreConsumedNeeded")
+
+        interceptReboundByAction(MotionEvent.ACTION_DOWN)
     }
 
     override fun onStopNestedScroll(target: View, type: Int) {
+        JLog.d(TAG, "onStopNestedScroll")
         mParentHelper?.onStopNestedScroll(target, type)
         if (type == ViewCompat.TYPE_NON_TOUCH) {
             smoothScrollBy(0, scrollY)
         }
         mNestedInProgress = false
+        mPreConsumedNeeded = 0
+        overSpinner()
     }
 
     override fun onNestedScroll(
@@ -501,7 +616,12 @@ class NestedHorizontalScrollView2 : ViewGroup, NestedScrollingParent3 {
     }
 
     override fun onNestedPreScroll(target: View, dx: Int, dy: Int, consumed: IntArray, type: Int) {
-        JLog.d(TAG, "onNestedPreScroll call. mPreConsumedNeeded = $mPreConsumedNeeded, dy = $dy")
+        if (dy == 0) return
+
+        JLog.d(
+            TAG, "onNestedPreScroll call. mPreConsumedNeeded = $mPreConsumedNeeded," +
+                    " mSpinner = ${mSpinner}, dy = $dy"
+        )
         var consumedY = 0
         // 两者异向，加剧过度滑动
         if (mPreConsumedNeeded * dy < 0) {
@@ -510,6 +630,7 @@ class NestedHorizontalScrollView2 : ViewGroup, NestedScrollingParent3 {
             compute2Moving(mPreConsumedNeeded)
         } else {
             // 两者同向，需先将 mPreConsumedNeeded 消耗掉
+            val lastConsumedNeeded = mPreConsumedNeeded
             if (dy.absoluteValue > mPreConsumedNeeded.absoluteValue) {
                 consumedY = mPreConsumedNeeded
                 mPreConsumedNeeded = 0
@@ -517,13 +638,16 @@ class NestedHorizontalScrollView2 : ViewGroup, NestedScrollingParent3 {
                 consumedY = dy
                 mPreConsumedNeeded -= dy
             }
-            compute2Moving(mPreConsumedNeeded)
+            if (lastConsumedNeeded != mPreConsumedNeeded) {
+                compute2Moving(mPreConsumedNeeded)
+            }
         }
         consumed[1] = consumedY
     }
 
     @Synchronized
     private fun onNestedScrollInternal(dyUnconsumed: Int, type: Int, consumed: IntArray?) {
+        if (dyUnconsumed == 0) return
         JLog.d(
             TAG, "onNestedScrollInternal call. dyUnconsumed = $dyUnconsumed, type = $type," +
                     " mPreConsumedNeeded = $mPreConsumedNeeded, canLoadMore = ${
@@ -550,7 +674,7 @@ class NestedHorizontalScrollView2 : ViewGroup, NestedScrollingParent3 {
             ) {
                 mPreConsumedNeeded -= dyUnconsumed
                 compute2Moving(mPreConsumedNeeded)
-                JLog.d(TAG, "mPreConsumedNeeded = $mPreConsumedNeeded")
+//                JLog.d(TAG, "mPreConsumedNeeded = $mPreConsumedNeeded")
                 if (consumed != null) {
                     consumed[1] += dyUnconsumed
                 }
