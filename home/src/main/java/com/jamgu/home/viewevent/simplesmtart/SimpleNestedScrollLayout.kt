@@ -309,6 +309,20 @@ class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
         }
     }
 
+    /*private var mPaint = Paint()
+    override fun drawChild(canvas: Canvas?, child: View?, drawingTime: Long): Boolean {
+        val thisView = this
+        val contentView = mRefreshContent?.getContentView() ?: return super.drawChild(canvas, child, drawingTime)
+        JLog.d(TAG, "drawChild called.")
+        if (child != null && mRefreshHeader?.getView() === child) {
+            mPaint.color = Color.BLUE
+            val bottom: Float = child.bottom + mSpinner
+            canvas!!.drawRect(0f, child.top.toFloat(), thisView.width.toFloat(), bottom, mPaint)
+        }
+
+        return super.drawChild(canvas, child, drawingTime)
+    }*/
+
     override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
         ev ?: return false
 
@@ -388,7 +402,7 @@ class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
 
                 if (mIsBeingDragged) {
                     JLog.d(TAG, "dispatchTouchEvent dy = $dy, touchY = $touchY, mTouchY = $mTouchY")
-                    compute2Moving(dy.roundToInt())
+                    computeDampedSlipDistance(dy.roundToInt())
                     return true
                 }
 
@@ -413,6 +427,10 @@ class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
         return super.dispatchTouchEvent(ev)
     }
 
+    /**
+     * 根据条件，是否拦截事件
+     * 如果是 down 事件，会终止回弹动画
+     */
     private fun interceptReboundByAction(action: Int): Boolean {
         if (action == MotionEvent.ACTION_DOWN) {
             mReboundAnimator?.let {
@@ -438,9 +456,17 @@ class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
     }
 
     private fun overSpinner() {
-        animSpinner(0f, 0, mReboundInterpolator, 1000)
+        animSpinner(0f, 0, mReboundInterpolator, 300)
     }
 
+    /**
+     * 通过动画模拟滑动到translationY = [endSpinner] 处
+     * @param endSpinner 最终要滑动到的距离
+     * @param startDelay 动画延迟开始时间 ms
+     * @param interpolator 动画插值器
+     * @param duration 动画持续时间
+     * @return ValueAnimator 执行动画的对象
+     */
     private fun animSpinner(
         endSpinner: Float,
         startDelay: Long,
@@ -454,7 +480,7 @@ class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
                 it.cancel()
             }
             mReboundAnimator = null
-            val endListener = object: AnimatorListenerAdapter() {
+            val endListener = object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator?) {
                     // cancel() 会导致 onAnimationEnd，通过设置duration = 0 来标记动画被取消
                     if (animation != null && animation.duration == 0L) {
@@ -488,29 +514,37 @@ class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
         return null
     }
 
-    private fun reverseCompute(spinner: Float): Int {
-        var x = 0
-        if (spinner >= 0) {
+    /**
+     * 给出阻尼计算的距离，计算原始滑动距离
+     * @param dampedDistance 阻尼计算过后的距离
+     * @return Float, 计算结果
+     */
+    private fun reverseComputeFromDamped2Origin(dampedDistance: Float): Int {
+        return if (dampedDistance >= 0) {
             // X = -H * log((1 - y / m), 100)
             val dragRate = 0.5f
             val m = if (mMaxDragRate < 10) mMaxDragRate * mMaxDragHeight else mMaxDragRate
             val h = (mScreenHeightPixels / 2).coerceAtLeast(this.height)
-            val y = spinner
+            val y = dampedDistance
             JLog.d(TAG, "reverse ${(-h * log((1 - y / m), 100f))}")
-            x = ((-h * log((1 - y / m), 100f)) / dragRate).roundToInt()
+            ((-h * log((1 - y / m), 100f)) / dragRate).roundToInt()
         } else {
             val dragRate = 0.5f
             val m = if (mMaxDragRate < 10) mMaxDragRate * mMaxDragHeight else mMaxDragRate
             val h = (mScreenHeightPixels / 2).coerceAtLeast(this.height)
-            val y = -spinner
-            x = -((-h * log((1 - y / m), 100f)) / dragRate).roundToInt()
+            val y = -dampedDistance
+            -((-h * log((1 - y / m), 100f)) / dragRate).roundToInt()
         }
-        return x
     }
 
-    private fun compute2Moving(translationY: Int) {
+    /**
+     * 计算阻尼滑动距离
+     * @param originTranslation 原始应该滑动的距离
+     * @return Float, 计算结果
+     */
+    private fun computeDampedSlipDistance(originTranslation: Int): Float {
 //        JLog.d(TAG, "dy = $translationY")
-        if (translationY >= 0) {
+        if (originTranslation >= 0) {
             /**
             final double M = mHeaderMaxDragRate < 10 ? mHeaderHeight * mHeaderMaxDragRate : mHeaderMaxDragRate;
             final double H = Math.max(mScreenHeightPixels / 2, thisView.getHeight());
@@ -520,10 +554,10 @@ class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
             val dragRate = 0.5f
             val m = if (mMaxDragRate < 10) mMaxDragRate * mMaxDragHeight else mMaxDragRate
             val h = (mScreenHeightPixels / 2).coerceAtLeast(this.height)
-            val x = (translationY * dragRate).coerceAtLeast(0f)
-            val y = (m * (1 - 100f.pow(-x / if (h == 0) 1 else h))).coerceAtMost(x)
-//            JLog.d(TAG, "down y = $y")
-            moveTranslation(y)
+            val x = (originTranslation * dragRate).coerceAtLeast(0f)
+            val y = m * (1 - 100f.pow(-x / (if (h == 0) 1 else h)))
+//            JLog.d(TAG, "down y = $y, m = $m , h = $h, x = $x")
+            return y
         } else {
             /**
             final float maxDragHeight = mFooterMaxDragRate < 10 ? mFooterHeight * mFooterMaxDragRate : mFooterMaxDragRate;
@@ -535,24 +569,20 @@ class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
             val dragRate = 0.5f
             val m = if (mMaxDragRate < 10) mMaxDragRate * mMaxDragHeight else mMaxDragRate
             val h = (mScreenHeightPixels / 2).coerceAtLeast(this.height)
-            val x = -(translationY * dragRate).coerceAtMost(0f)
-            val y = -((m * (1 - 100f.pow(-x / if (h == 0) 1 else h))).coerceAtMost(x))
-//            JLog.d(TAG, "up y = $y")
+            val x = -(originTranslation * dragRate).coerceAtMost(0f)
+            val y = -m * (1 - 100f.pow(-x / if (h == 0) 1 else h))
+//            JLog.d(TAG, "up y = $y, m = $m , h = $h, x = $x")
 //            scrollBy(0, -y.roundToInt())
-            moveTranslation(y)
+            return y
         }
     }
 
     private fun moveTranslation(dy: Float) {
-        mSpinner = dy
         for (i in 0 until super.getChildCount()) {
             super.getChildAt(i).translationY = dy
         }
-    }
-
-    private fun smoothScrollBy(dx: Int, dy: Int) {
-        mScroller.startScroll(scrollX, scrollY, -dx, -dy, 500)
-        invalidate()
+        mSpinner = dy
+//        invalidate()
     }
 
     override fun computeScroll() {
@@ -574,21 +604,19 @@ class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
         mParentHelper?.onNestedScrollAccepted(child, target, axes, type)
 //        mPreConsumedNeeded = mSpinner.roundToInt()
         mNestedInProgress = true
-        mPreConsumedNeeded = reverseCompute(mSpinner)
-        JLog.d(TAG, "onNestedScrollAccepted, type = $type, mSpinner = $mSpinner," +
-                " mPreConsumedNeeded = $mPreConsumedNeeded")
+        mPreConsumedNeeded = reverseComputeFromDamped2Origin(mSpinner)
+        JLog.d(
+            TAG, "onNestedScrollAccepted, type = $type, mSpinner = $mSpinner," +
+                    " mPreConsumedNeeded = $mPreConsumedNeeded"
+        )
 
         interceptReboundByAction(MotionEvent.ACTION_DOWN)
     }
 
     override fun onStopNestedScroll(target: View, type: Int) {
-        JLog.d(TAG, "onStopNestedScroll")
+//        JLog.d(TAG, "onStopNestedScroll")
         mParentHelper?.onStopNestedScroll(target, type)
-        if (type == ViewCompat.TYPE_NON_TOUCH) {
-            smoothScrollBy(0, scrollY)
-        }
         mNestedInProgress = false
-        mPreConsumedNeeded = 0
         overSpinner()
     }
 
@@ -601,7 +629,11 @@ class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
         type: Int,
         consumed: IntArray
     ) {
-        onNestedScrollInternal(dyUnconsumed, type, consumed)
+        if (type == ViewCompat.TYPE_TOUCH) {
+            onNestedScrollInternal(dyUnconsumed, type, consumed)
+        } else {
+            consumed[1] += dyUnconsumed
+        }
     }
 
     override fun onNestedScroll(
@@ -612,52 +644,47 @@ class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
         dyUnconsumed: Int,
         type: Int
     ) {
-        onNestedScrollInternal(dyUnconsumed, type, null)
+        if (type == ViewCompat.TYPE_TOUCH) {
+            onNestedScrollInternal(dyUnconsumed, type, null)
+        }
     }
 
     override fun onNestedPreScroll(target: View, dx: Int, dy: Int, consumed: IntArray, type: Int) {
         if (dy == 0) return
 
-        JLog.d(
-            TAG, "onNestedPreScroll call. mPreConsumedNeeded = $mPreConsumedNeeded," +
-                    " mSpinner = ${mSpinner}, dy = $dy"
-        )
-        var consumedY = 0
-        // 两者异向，加剧过度滑动
-        if (mPreConsumedNeeded * dy < 0) {
-            consumedY = dy
-            mPreConsumedNeeded -= dy
-            compute2Moving(mPreConsumedNeeded)
-        } else {
-            // 两者同向，需先将 mPreConsumedNeeded 消耗掉
-            val lastConsumedNeeded = mPreConsumedNeeded
-            if (dy.absoluteValue > mPreConsumedNeeded.absoluteValue) {
-                consumedY = mPreConsumedNeeded
-                mPreConsumedNeeded = 0
-            } else {
+//        JLog.d(
+//            TAG, "onNestedPreScroll call. mPreConsumedNeeded = $mPreConsumedNeeded," +
+//                    " mSpinner = ${mSpinner}, dy = $dy"
+//        )
+        // 触摸事件的嵌套滑动才处理
+        if (type == ViewCompat.TYPE_TOUCH) {
+            var consumedY = 0
+            // 两者异向，加剧过度滑动
+            if (mPreConsumedNeeded * dy < 0) {
                 consumedY = dy
                 mPreConsumedNeeded -= dy
+                moveTranslation(computeDampedSlipDistance(mPreConsumedNeeded))
+            } else {
+                // 两者同向，需先将 mPreConsumedNeeded 消耗掉
+                val lastConsumedNeeded = mPreConsumedNeeded
+                if (dy.absoluteValue > mPreConsumedNeeded.absoluteValue) {
+                    consumedY = mPreConsumedNeeded
+                    mPreConsumedNeeded = 0
+                } else {
+                    consumedY = dy
+                    mPreConsumedNeeded -= dy
+                }
+                if (lastConsumedNeeded != mPreConsumedNeeded) {
+                    moveTranslation(computeDampedSlipDistance(mPreConsumedNeeded))
+                }
             }
-            if (lastConsumedNeeded != mPreConsumedNeeded) {
-                compute2Moving(mPreConsumedNeeded)
-            }
+            consumed[1] = consumedY
         }
-        consumed[1] = consumedY
     }
 
     @Synchronized
     private fun onNestedScrollInternal(dyUnconsumed: Int, type: Int, consumed: IntArray?) {
         if (dyUnconsumed == 0) return
-        JLog.d(
-            TAG, "onNestedScrollInternal call. dyUnconsumed = $dyUnconsumed, type = $type," +
-                    " mPreConsumedNeeded = $mPreConsumedNeeded, canLoadMore = ${
-                        WidgetUtil.canLoadMore(
-                            getChildAt(0),
-                            null
-                        )
-                    }, " +
-                    "canRefresh = ${WidgetUtil.canRefresh(getChildAt(0), null)}"
-        )
         // dy > 0 向上滚
         val dy = dyUnconsumed
         if (type == ViewCompat.TYPE_NON_TOUCH) {
@@ -673,7 +700,7 @@ class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
                     ))
             ) {
                 mPreConsumedNeeded -= dyUnconsumed
-                compute2Moving(mPreConsumedNeeded)
+                moveTranslation(computeDampedSlipDistance(mPreConsumedNeeded))
 //                JLog.d(TAG, "mPreConsumedNeeded = $mPreConsumedNeeded")
                 if (consumed != null) {
                     consumed[1] += dyUnconsumed
