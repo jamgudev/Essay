@@ -4,6 +4,8 @@ import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.VelocityTracker
@@ -13,11 +15,13 @@ import android.view.View.MeasureSpec.EXACTLY
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+import android.view.animation.AnimationUtils
 import android.view.animation.Interpolator
 import android.widget.Scroller
 import androidx.core.view.NestedScrollingParent3
 import androidx.core.view.NestedScrollingParentHelper
 import androidx.core.view.ViewCompat
+import com.jamgu.base.widget.dp2px
 import com.jamgu.common.util.log.JLog
 import com.jamgu.home.viewevent.DIRECTION_NONE
 import com.jamgu.home.viewevent.simplesmtart.api.IRefreshComponent
@@ -31,6 +35,7 @@ import com.jamgu.home.viewevent.simplesmtart.interpolator.INTERPOLATOR_VISCOUS_F
 import com.jamgu.home.viewevent.simplesmtart.interpolator.ReboundInterpolator
 import com.jamgu.home.viewevent.simplesmtart.util.SmartUtil
 import com.jamgu.home.viewevent.simplesmtart.util.WidgetUtil
+import kotlin.math.abs
 import kotlin.math.absoluteValue
 import kotlin.math.log
 import kotlin.math.pow
@@ -44,7 +49,7 @@ private const val TAG = "NestedHorizontalScrollView2"
  * 在 [com.jamgu.home.viewevent.HorizontalScrollView] 的基础上，支持嵌套滑动
  *
  */
-class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
+open class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
 
     // 上一次触碰的位置
     private var mTouchX = 0f
@@ -73,15 +78,19 @@ class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
     private val mMaxDragHeight = 250
     private val mScreenHeightPixels = context.resources.displayMetrics.heightPixels
 
+    private var mHandler: Handler? = null
     private var mIsBeingDragged = false
     private var mSuperDispatchTouchEvent = false
     private var mNestedInProgress = false
-    private var mIsAllowOverScroll = true       // 是否允许过渡滑动
-    private var mPreConsumedNeeded = 0          // 在子 View 滑动前，此View需要滑动的距离
-    private var mSpinner = 0f                    // 当前竖直方向上 translationY 的距离
+    private var mIsAllowOverScroll = true           // 是否允许过渡滑动
+    private var mPreConsumedNeeded = 0              // 在子 View 滑动前，此View需要滑动的距离
+    private var mSpinner = 0f                       // 当前竖直方向上 translationY 的距离
 
     private var mReboundAnimator: ValueAnimator? = null
     private var mReboundInterpolator = ReboundInterpolator(INTERPOLATOR_VISCOUS_FLUID)
+
+    private var animationRunnable: Runnable? = null // 用来实现fling时，先过度滑动再回弹的效果
+    private var mVerticalPermit = false // 控制fling时等待contentView回到translation = 0 的位置
 
     private var mRefreshContent: IRefreshContent? = null
     private var mRefreshHeader: IRefreshComponent? = null
@@ -101,6 +110,7 @@ class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
 
     private fun init() {
         setWillNotDraw(false)
+        mHandler = Handler(Looper.getMainLooper())
         mParentHelper = NestedScrollingParentHelper(this)
         ViewConfiguration.get(context).let {
             mTouchSlop = it.scaledTouchSlop
@@ -149,6 +159,10 @@ class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
             it.cancel()
         }
         mReboundAnimator = null
+        mVelocityTracker.clear()
+        if (mHandler != null) {
+            mHandler?.removeCallbacksAndMessages(null)
+        }
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -402,21 +416,24 @@ class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
 
                 if (mIsBeingDragged) {
                     JLog.d(TAG, "dispatchTouchEvent dy = $dy, touchY = $touchY, mTouchY = $mTouchY")
-                    computeDampedSlipDistance(dy.roundToInt())
+                    computeDampedSlipDistance((dy + mSpinner).roundToInt())
                     return true
                 }
 
             }
             MotionEvent.ACTION_UP -> {
+                JLog.d(TAG, "ACTION_UP comes.")
                 mVelocityTracker.addMovement(ev)
                 mVelocityTracker.computeCurrentVelocity(1000, mMaximumVelocity)
                 mCurrentVelocity = mVelocityTracker.yVelocity
-//                startFlingIfNeed(0f)
+                startFlingIfNeed(0f)
             }
             MotionEvent.ACTION_POINTER_UP -> {
                 onPointerUp(ev)
             }
             MotionEvent.ACTION_CANCEL -> {
+                mVelocityTracker.clear()
+                overSpinner()
                 if (mIsBeingDragged) {
                     mIsBeingDragged = false
                     return true
@@ -456,7 +473,7 @@ class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
     }
 
     private fun overSpinner() {
-        animSpinner(0f, 0, mReboundInterpolator, 300)
+        animSpinner(0f, 0, mReboundInterpolator, 1000)
     }
 
     /**
@@ -512,6 +529,19 @@ class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
         }
 
         return null
+    }
+
+    /**
+     * 越界回弹动画
+     * @param velocity 速度
+     */
+    protected fun animSpinnerBounce(velocity: Float) {
+        if (mReboundAnimator == null) {
+            JLog.d(TAG, "animSpinnerBounce = $mSpinner")
+            if (mSpinner == 0f && mIsAllowOverScroll) {
+                animationRunnable = BounceRunnable(velocity, 0)
+            }
+        }
     }
 
     /**
@@ -585,10 +615,89 @@ class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
 //        invalidate()
     }
 
+    private fun startFlingIfNeed(flingVelocity: Float): Boolean {
+        val velocity = if (flingVelocity == 0f) mCurrentVelocity else flingVelocity
+        if (velocity.absoluteValue > mMinimumVelocity) {
+            if (velocity < 0 && mIsAllowOverScroll && mSpinner == 0f
+                    || velocity > 0 && mIsAllowOverScroll && mSpinner == 0f
+            ) {
+                mScroller.fling(0, 0, 0, (-velocity).toInt(), 0, 0, -Int.MAX_VALUE, Int.MAX_VALUE)
+                mScroller.computeScrollOffset()
+                val thisView: View = this
+                thisView.invalidate()
+            }
+        }
+
+        return false
+    }
+
+    protected inner class BounceRunnable internal constructor(var mVelocity: Float, var mSmoothDistance: Int) :
+        Runnable {
+        var mFrame = 0
+        var mFrameDelay = 10
+        var mLastTime: Long
+        var mOffset = 0f
+        override fun run() {
+            if (animationRunnable === this) {
+                mVelocity *= if (abs(mSpinner) >= abs(mSmoothDistance)) {
+                    if (mSmoothDistance != 0) {
+                        0.45.pow((++mFrame * 2).toDouble()).toFloat() //刷新、加载时回弹滚动数度衰减
+                    } else {
+                        0.85.pow((++mFrame * 2).toDouble()).toFloat() //回弹滚动数度衰减
+                    }
+                } else {
+                    0.95.pow((++mFrame * 2).toDouble()).toFloat() //平滑滚动数度衰减
+                }
+                val now = AnimationUtils.currentAnimationTimeMillis()
+                val t = 1f * (now - mLastTime) / 1000
+                val velocity = mVelocity * t
+                if (abs(velocity) >= 1) {
+                    mLastTime = now
+                    mOffset += velocity
+                    moveTranslation(computeDampedSlipDistance(mOffset.roundToInt()))
+                    mHandler?.postDelayed(this, mFrameDelay.toLong())
+                } else {
+                    animationRunnable = null
+                    if (abs(mSpinner) >= abs(mSmoothDistance)) {
+                        val duration = 10L * (abs(mSpinner - mSmoothDistance).dp2px(context))
+                                .coerceAtLeast(30).coerceAtMost(100)
+                        animSpinner(mSmoothDistance.toFloat(), 0, mReboundInterpolator, duration)
+                    }
+                }
+            }
+        }
+
+        init {
+            mLastTime = AnimationUtils.currentAnimationTimeMillis()
+            mHandler?.postDelayed(this, mFrameDelay.toLong())
+        }
+    }
+
     override fun computeScroll() {
         if (mScroller.computeScrollOffset()) {
-            scrollTo(mScroller.currX, mScroller.currY)
-            postInvalidate()
+            val finalY = mScroller.finalY
+            JLog.d(
+                TAG, "computeScroll, finalY = $finalY loadMore = ${
+                    WidgetUtil.canLoadMore(
+                        mRefreshContent?.getContentView(),
+                        null
+                    )
+                } + " +
+                        "refresh = ${WidgetUtil.canRefresh(mRefreshContent?.getContentView(), null)}"
+            )
+            if (finalY < 0 && WidgetUtil.canRefresh(mRefreshContent?.getContentView(), null)
+                    || finalY > 0 && WidgetUtil.canLoadMore(mRefreshContent?.getContentView(), null)
+            ) {
+                if (mVerticalPermit) {
+                    val velocity = if (finalY > 0) -mScroller.currVelocity else mScroller.currVelocity
+                    animSpinnerBounce(velocity)
+                }
+                mScroller.forceFinished(true)
+            } else {
+                mVerticalPermit = true
+                val thisView = this
+                thisView.invalidate()
+            }
         }
     }
 
@@ -602,7 +711,6 @@ class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
 
     override fun onNestedScrollAccepted(child: View, target: View, axes: Int, type: Int) {
         mParentHelper?.onNestedScrollAccepted(child, target, axes, type)
-//        mPreConsumedNeeded = mSpinner.roundToInt()
         mNestedInProgress = true
         mPreConsumedNeeded = reverseComputeFromDamped2Origin(mSpinner)
         JLog.d(
@@ -618,6 +726,14 @@ class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
         mParentHelper?.onStopNestedScroll(target, type)
         mNestedInProgress = false
         overSpinner()
+    }
+
+    override fun onNestedPreFling(target: View, velocityX: Float, velocityY: Float): Boolean {
+        return startFlingIfNeed(-velocityY)
+    }
+
+    override fun onNestedFling(target: View, velocityX: Float, velocityY: Float, consumed: Boolean): Boolean {
+        return super.onNestedFling(target, velocityX, velocityY, consumed)
     }
 
     override fun onNestedScroll(
