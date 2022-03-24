@@ -6,19 +6,24 @@ import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.ViewConfiguration
 import android.view.ViewGroup
-import android.widget.ScrollView
 import android.widget.Scroller
 import androidx.core.view.children
 import androidx.core.view.isVisible
 import androidx.core.view.marginRight
 import androidx.core.view.marginStart
-import androidx.recyclerview.widget.RecyclerView
 import com.jamgu.common.util.log.JLog
+import com.jamgu.home.viewevent.simplesmtart.util.WidgetUtil
 import kotlin.math.absoluteValue
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
 private const val TAG = "HorizontalScrollView"
+
+const val DIRECTION_NONE = 0
+const val DIRECTION_UP = 1
+const val DIRECTION_DOWN = 2
+const val DIRECTION_LEFT = 3
+const val DIRECTION_RIGHT = 4
 
 /**
  * Created by jamgu on 2022/02/18
@@ -26,30 +31,30 @@ private const val TAG = "HorizontalScrollView"
  * 解决父-左右，子上下滑动冲突（异向）、同向以及混合滑动冲突场景
  * 兼容多点触摸事件【POINTER_DOWN, POINTER_UP】、过度阻尼滑动
  */
-class HorizontalScrollView: ViewGroup, IOverScroll {
+open class HorizontalScrollView: ViewGroup {
 
-    private var mLastX = 0.0f
-    private var mLastY = 0.0f
-    private var mLastInterceptX = 0.0f
-    private var mLastInterceptY = 0.0f
-    private var mVelocityTracker = VelocityTracker.obtain()
-    private var mScroller = Scroller(context)
+    protected var mLastX = 0.0f
+    protected var mLastY = 0.0f
+    protected var mLastInterceptX = 0.0f
+    protected var mLastInterceptY = 0.0f
+    protected var mVelocityTracker = VelocityTracker.obtain()
+    protected var mScroller = Scroller(context)
     // 记录当前显示子 View 的索引
-    private var mChildCurIdx = 0
+    protected var mChildCurIdx = 0
     // 记录当前滑动的方向
-    private var mTouchDirection = DIRECTION_NONE
+    protected var mTouchDirection = DIRECTION_NONE
 
     // 处理多点触碰，用于记录当前处理滑动的触摸点ID
-    private var mScrollPointerId = 0
+    protected var mScrollPointerId = 0
 
-    private var mTouchSlop: Int = 0
-    private var mMinimumVelocity: Int = 0
-    private var mMaximumVelocity: Int = 0
+    protected var mTouchSlop: Int = 0
+    protected var mMinimumVelocity: Int = 0
+    protected var mMaximumVelocity: Int = 0
 
     // 阻尼滑动参数
-    private val mMaxDragRate = 2.5f
-    private val mMaxDragHeight = 250
-    private val mScreenHeightPixels = context.resources.displayMetrics.heightPixels
+    protected val mMaxDragRate = 2.5f
+    protected val mMaxDragHeight = 250
+    protected val mScreenHeightPixels = context.resources.displayMetrics.heightPixels
 
     constructor(context: Context) : super(context) {
         init()
@@ -101,9 +106,9 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
                 }
                 val x = ev.getX(pIdx)
                 val y = ev.getY(pIdx)
-                val dX = (x - mLastInterceptX).absoluteValue
-                val dY = (y - mLastInterceptY).absoluteValue
-                mTouchDirection = if (dX > dY) {
+                val aX = (x - mLastInterceptX).absoluteValue
+                val aY = (y - mLastInterceptY).absoluteValue
+                mTouchDirection = if (aX > aY) {
                     if (x - mLastX >= 0) DIRECTION_RIGHT
                     else DIRECTION_LEFT
                 } else {
@@ -111,7 +116,10 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
                         DIRECTION_DOWN
                     } else DIRECTION_UP
                 }
-                if ((dX > dY && dY > mTouchSlop) || isUDOverScroll()) {
+                val contentView = super.getChildAt(mChildCurIdx)
+                if ((aX > aY && aY > mTouchSlop)
+                        || (y - mLastY < 0 && WidgetUtil.canLoadMore(contentView, null))
+                        || (y - mLastY > 0 && WidgetUtil.canRefresh(contentView, null))) {
                     intercepted = true
                 }
                 mLastX = x
@@ -228,7 +236,19 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
         return super.onTouchEvent(event)
     }
 
-    private fun moveSpinnerDamping(dy: Float) {
+    protected fun isTouchDirectionVertical(direction: Int?): Boolean {
+        direction ?: return false
+
+        return direction == DIRECTION_UP || direction == DIRECTION_DOWN
+    }
+
+    protected fun isTouchDirectionHorizontal(direction: Int?): Boolean {
+        direction ?: return false
+
+        return direction == DIRECTION_LEFT || direction == DIRECTION_RIGHT
+    }
+
+    protected fun moveSpinnerDamping(dy: Float) {
         if (dy >= 0) {
             /**
             final double M = mHeaderMaxDragRate < 10 ? mHeaderHeight * mHeaderMaxDragRate : mHeaderMaxDragRate;
@@ -261,7 +281,7 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
         }
     }
 
-    private fun onPointerUp(e: MotionEvent?) {
+    protected fun onPointerUp(e: MotionEvent?) {
         e ?: return
         val actionIndex = e.actionIndex
         // 如果离开的那个点的id正好是我们接管触摸的那个点，那么我们就需要重新再找一个pointer来接管，反之不用管
@@ -276,7 +296,7 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
         }
     }
 
-    private fun smoothScrollBy(dx: Int, dy: Int) {
+    protected fun smoothScrollBy(dx: Int, dy: Int) {
         mScroller.startScroll(scrollX, scrollY, dx, dy, 500)
         invalidate()
     }
@@ -334,25 +354,10 @@ class HorizontalScrollView: ViewGroup, IOverScroll {
         return MarginLayoutParams(context, attrs)
     }
 
-    override fun isUDOverScroll(): Boolean {
-        val childAt = getChildAt(mChildCurIdx) ?: return false
-        var isUDOverScroll = false
-
-        when(childAt) {
-            is RecyclerView -> {
-                isUDOverScroll = isRecyclerViewAbout2OverScroll(childAt, mTouchDirection)
-            }
-
-            is ScrollView -> {
-
-            }
-        }
-
-        JLog.d(TAG, "isUDOverScroll = $isUDOverScroll")
-        return isUDOverScroll
-    }
-
-    override fun isLROverScroll(): Boolean {
+    /**
+     * 左右两边是否越界滑动
+     */
+    protected fun isLROverScroll(): Boolean {
         var wholeWidth = 0L
         children.forEach {
             wholeWidth += it.width + it.marginStart + it.marginRight
