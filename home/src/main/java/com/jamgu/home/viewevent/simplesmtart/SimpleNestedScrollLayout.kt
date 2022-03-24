@@ -23,7 +23,6 @@ import androidx.core.view.NestedScrollingParentHelper
 import androidx.core.view.ViewCompat
 import com.jamgu.base.widget.dp2px
 import com.jamgu.common.util.log.JLog
-import com.jamgu.home.viewevent.DIRECTION_NONE
 import com.jamgu.home.viewevent.simplesmtart.api.IRefreshComponent
 import com.jamgu.home.viewevent.simplesmtart.api.IRefreshContent
 import com.jamgu.home.viewevent.simplesmtart.api.IRefreshFooter
@@ -46,7 +45,7 @@ private const val TAG = "NestedHorizontalScrollView2"
 /**
  * Created by jamgu on 2022/02/18
  *
- * 在 [com.jamgu.home.viewevent.HorizontalScrollView] 的基础上，支持嵌套滑动
+ * 处理上下滑动冲突、实现无缝、阻尼嵌套滑动
  *
  */
 open class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
@@ -56,13 +55,6 @@ open class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
     private var mTouchY = 0f
     private var mVelocityTracker = VelocityTracker.obtain()
     private var mScroller = Scroller(context)
-
-    // 记录当前显示子 View 的索引
-    private var mChildCurIdx = 0
-
-    // 记录当前滑动的方向
-    private var mTouchDirection = DIRECTION_NONE
-
     // 处理多点触碰，用于记录当前处理滑动的触摸点ID
     private var mScrollPointerId = 0
 
@@ -89,7 +81,7 @@ open class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
     private var mReboundAnimator: ValueAnimator? = null
     private var mReboundInterpolator = ReboundInterpolator(INTERPOLATOR_VISCOUS_FLUID)
 
-    private var animationRunnable: Runnable? = null // 用来实现fling时，先过度滑动再回弹的效果
+    private var mAnimationRunnable: Runnable? = null // 用来实现fling时，先过度滑动再回弹的效果
     private var mVerticalPermit = false // 控制fling时等待contentView回到translation = 0 的位置
 
     private var mRefreshContent: IRefreshContent? = null
@@ -159,10 +151,12 @@ open class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
             it.cancel()
         }
         mReboundAnimator = null
+        mAnimationRunnable = null
         mVelocityTracker.clear()
         if (mHandler != null) {
             mHandler?.removeCallbacksAndMessages(null)
         }
+
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -385,7 +379,7 @@ open class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
                     JLog.e(TAG, "pointer index for id $mScrollPointerId not found. Did any MotionEvent get skipped?")
                     return false
                 }
-                val touchX = ev.getX(pIdx)
+                /*val touchX = ev.getX(pIdx)
                 val touchY = ev.getY(pIdx)
                 val dx = touchX - mTouchX
                 var dy = touchY - mTouchY
@@ -415,10 +409,9 @@ open class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
                 }
 
                 if (mIsBeingDragged) {
-                    JLog.d(TAG, "dispatchTouchEvent dy = $dy, touchY = $touchY, mTouchY = $mTouchY")
                     computeDampedSlipDistance((dy + mSpinner).roundToInt())
                     return true
-                }
+                }*/
 
             }
             MotionEvent.ACTION_UP -> {
@@ -496,7 +489,7 @@ open class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
                 it.duration = 0
                 it.cancel()
             }
-            mReboundAnimator = null
+            mAnimationRunnable = null
             val endListener = object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator?) {
                     // cancel() 会导致 onAnimationEnd，通过设置duration = 0 来标记动画被取消
@@ -539,7 +532,7 @@ open class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
         if (mReboundAnimator == null) {
             JLog.d(TAG, "animSpinnerBounce = $mSpinner")
             if (mSpinner == 0f && mIsAllowOverScroll) {
-                animationRunnable = BounceRunnable(velocity, 0)
+                mAnimationRunnable = BounceRunnable(velocity, 0)
             }
         }
     }
@@ -638,7 +631,7 @@ open class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
         var mLastTime: Long
         var mOffset = 0f
         override fun run() {
-            if (animationRunnable === this) {
+            if (mAnimationRunnable === this) {
                 mVelocity *= if (abs(mSpinner) >= abs(mSmoothDistance)) {
                     if (mSmoothDistance != 0) {
                         0.45.pow((++mFrame * 2).toDouble()).toFloat() //刷新、加载时回弹滚动数度衰减
@@ -657,7 +650,7 @@ open class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
                     moveTranslation(computeDampedSlipDistance(mOffset.roundToInt()))
                     mHandler?.postDelayed(this, mFrameDelay.toLong())
                 } else {
-                    animationRunnable = null
+                    mAnimationRunnable = null
                     if (abs(mSpinner) >= abs(mSmoothDistance)) {
                         val duration = 10L * (abs(mSpinner - mSmoothDistance).dp2px(context))
                                 .coerceAtLeast(30).coerceAtMost(100)
@@ -676,15 +669,6 @@ open class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
     override fun computeScroll() {
         if (mScroller.computeScrollOffset()) {
             val finalY = mScroller.finalY
-            JLog.d(
-                TAG, "computeScroll, finalY = $finalY loadMore = ${
-                    WidgetUtil.canLoadMore(
-                        mRefreshContent?.getContentView(),
-                        null
-                    )
-                } + " +
-                        "refresh = ${WidgetUtil.canRefresh(mRefreshContent?.getContentView(), null)}"
-            )
             if (finalY < 0 && WidgetUtil.canRefresh(mRefreshContent?.getContentView(), null)
                     || finalY > 0 && WidgetUtil.canLoadMore(mRefreshContent?.getContentView(), null)
             ) {
@@ -774,7 +758,7 @@ open class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
 //        )
         // 触摸事件的嵌套滑动才处理
         if (type == ViewCompat.TYPE_TOUCH) {
-            var consumedY = 0
+            val consumedY: Int
             // 两者异向，加剧过度滑动
             if (mPreConsumedNeeded * dy < 0) {
                 consumedY = dy
@@ -806,7 +790,7 @@ open class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
         if (type == ViewCompat.TYPE_NON_TOUCH) {
             // fling 不处理，直接消耗
             if (consumed != null) {
-                consumed[1] += dyUnconsumed
+                consumed[1] += dy
             }
         } else {
             if ((dy < 0 && mIsAllowOverScroll && mPreConsumedNeeded == 0 && WidgetUtil.canRefresh(getChildAt(0), null))
@@ -815,11 +799,11 @@ open class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
                         null
                     ))
             ) {
-                mPreConsumedNeeded -= dyUnconsumed
+                mPreConsumedNeeded -= dy
                 moveTranslation(computeDampedSlipDistance(mPreConsumedNeeded))
 //                JLog.d(TAG, "mPreConsumedNeeded = $mPreConsumedNeeded")
                 if (consumed != null) {
-                    consumed[1] += dyUnconsumed
+                    consumed[1] += dy
                 }
             }
         }
