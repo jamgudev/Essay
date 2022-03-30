@@ -35,7 +35,6 @@ class ViewEventActivity2 : ViewBindingActivity<ActivityViewEvent2Binding>() {
 
     private fun initRecycler(recyclerView: RecyclerView) {
         SetListBuilder(recyclerView).showDecoration(true).paddingPair(16, 16)
-                .decorationOfGroup(10, "#999999")
                 .addItem {
                     SetItemBuilder().viewType(VIEW_TYPE_NORMAL).mainText("资料设置")
                 }.addItem {

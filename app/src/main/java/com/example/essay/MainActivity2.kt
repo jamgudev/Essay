@@ -33,7 +33,7 @@ class MainActivity2 : AppCompatActivity() {
 //            )
 
             KRouters.open(this, KRouterUriBuilder("app_name")
-                        .appendAuthority(Schemes.ViewEventPage.HOST_NAME).build())
+                        .appendAuthority(Schemes.ViewEventPage.HOST_NAME2).build())
 
 //            val intent = Intent(this, MainActivity::class.java)
 //            this.startActivity(intent)

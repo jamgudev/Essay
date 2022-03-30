@@ -9,7 +9,7 @@
             android:id="@+id/eventView"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:background="#002002">
+            android:background="#f1227f">
 
         <com.jamgu.home.viewevent.simplesmtart.ClassicHeader
                 android:layout_width="match_parent"
@@ -29,7 +29,6 @@
                 android:id="@+id/vRecycler1"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:background="#f5f11f"
                 android:gravity="center" />
 
         <com.jamgu.home.viewevent.simplesmtart.ClassicFooter
