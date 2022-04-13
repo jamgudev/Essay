@@ -1,4 +1,4 @@
-package com.jamgu.home.viewevent
+package com.jamgu.home.viewevent.simplesmtart
 
 import androidx.recyclerview.widget.RecyclerView
 import com.jamgu.common.page.activity.ViewBindingActivity
@@ -28,7 +28,6 @@ class ViewEventActivity2 : ViewBindingActivity<ActivityViewEvent2Binding>() {
         mBinding.eventView.setOnClickListener {
             JLog.d(TAG, "onClick called.")
         }
-        mBinding.eventView.isEnabled = false
 
         initRecycler(mBinding.vRecycler1)
     }

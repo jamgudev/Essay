@@ -40,7 +40,7 @@ import kotlin.math.log
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
-private const val TAG = "NestedHorizontalScrollView2"
+private const val TAG = "SimpleNestedScrollLayout"
 
 /**
  * Created by jamgu on 2022/02/18
@@ -81,8 +81,8 @@ open class SimpleNestedScrollLayout : ViewGroup, NestedScrollingParent3 {
     private var mReboundAnimator: ValueAnimator? = null
     private var mReboundInterpolator = ReboundInterpolator(INTERPOLATOR_VISCOUS_FLUID)
 
-    private var mAnimationRunnable: Runnable? = null // 用来实现fling时，先过度滑动再回弹的效果
-    private var mVerticalPermit = false // 控制fling时等待contentView回到translation = 0 的位置
+    private var mAnimationRunnable: Runnable? = null    // 用来实现fling时，先过度滑动再回弹的效果
+    private var mVerticalPermit = false                 // 控制fling时等待contentView回到translation = 0 的位置
 
     private var mRefreshContent: IRefreshContent? = null
     private var mRefreshHeader: IRefreshComponent? = null
