@@ -40,13 +40,8 @@ private const val TAG = "SimpleNestedScrollLayout"
  */
 open class NestedOverScrollLayout : ViewGroup, NestedScrollingParent3 {
 
-    // 上一次触碰的位置
-    private var mTouchX = 0f
-    private var mTouchY = 0f
     private var mVelocityTracker = VelocityTracker.obtain()
     private var mScroller = Scroller(context)
-    // 处理多点触碰，用于记录当前处理滑动的触摸点ID
-    private var mScrollPointerId = 0
 
     private var mParentHelper: NestedScrollingParentHelper? = null
 
@@ -61,8 +56,6 @@ open class NestedOverScrollLayout : ViewGroup, NestedScrollingParent3 {
     private val mScreenHeightPixels = context.resources.displayMetrics.heightPixels
 
     private var mHandler: Handler? = null
-    private var mIsBeingDragged = false
-    private var mSuperDispatchTouchEvent = false
     private var mNestedInProgress = false
     private var mIsAllowOverScroll = true           // 是否允许过渡滑动
     private var mPreConsumedNeeded = 0              // 在子 View 滑动前，此View需要滑动的距离
@@ -226,87 +219,6 @@ open class NestedOverScrollLayout : ViewGroup, NestedScrollingParent3 {
             return false
         }
 
-        JLog.d(TAG, "不在嵌套滑动流程：可能是 down事件，或者自己处理滑动事件")
-        when (action) {
-            MotionEvent.ACTION_DOWN -> {
-                if (!mScroller.isFinished) {
-                    mScroller.abortAnimation()
-                }
-                mScrollPointerId = ev.getPointerId(0)
-
-                // 触摸事件初始化
-                mTouchX = ev.x
-                mTouchY = ev.y
-
-                mSuperDispatchTouchEvent = super.dispatchTouchEvent(ev)
-                return true
-            }
-            MotionEvent.ACTION_POINTER_DOWN -> {
-                mScrollPointerId = ev.getPointerId(actionIndex)
-                mTouchX = ev.getX(actionIndex)
-                mTouchY = ev.getY(actionIndex)
-            }
-            MotionEvent.ACTION_MOVE -> {
-                val pIdx = ev.findPointerIndex(mScrollPointerId)
-                if (pIdx < 0) {
-                    JLog.e(TAG, "pointer index for id $mScrollPointerId not found. Did any MotionEvent get skipped?")
-                    return false
-                }
-                /*val touchX = ev.getX(pIdx)
-                val touchY = ev.getY(pIdx)
-                val dx = touchX - mTouchX
-                var dy = touchY - mTouchY
-
-                if (dx.absoluteValue < dy.absoluteValue) {
-                    if (dy > 0 && dy > mTouchSlop) {
-                        mIsBeingDragged = true
-                        dy -= mTouchSlop
-                    } else if (dy < 0 && dy < -mTouchSlop) {
-                        mIsBeingDragged = true
-                        dy += mTouchSlop
-                    }
-
-                    if (mIsBeingDragged) {
-                        // 如果事件经过正常分发后，被别的控件消耗了事件
-                        // 分发一个取消事件
-                        if (mSuperDispatchTouchEvent) {
-                            ev.action = MotionEvent.ACTION_CANCEL
-                            super.dispatchTouchEvent(ev)
-                        }
-                        val parent = thisView.parent
-                        if (parent is ViewGroup) {
-                            // 通知父控件不要拦截事件
-                            parent.requestDisallowInterceptTouchEvent(true)
-                        }
-                    }
-                }
-
-                if (mIsBeingDragged) {
-                    computeDampedSlipDistance((dy + mSpinner).roundToInt())
-                    return true
-                }*/
-
-            }
-            MotionEvent.ACTION_UP -> {
-                JLog.d(TAG, "ACTION_UP comes.")
-                mVelocityTracker.addMovement(ev)
-                mVelocityTracker.computeCurrentVelocity(1000, mMaximumVelocity)
-                mCurrentVelocity = mVelocityTracker.yVelocity
-                startFlingIfNeed(0f)
-            }
-            MotionEvent.ACTION_POINTER_UP -> {
-                onPointerUp(ev)
-            }
-            MotionEvent.ACTION_CANCEL -> {
-                mVelocityTracker.clear()
-                overSpinner()
-                if (mIsBeingDragged) {
-                    mIsBeingDragged = false
-                    return true
-                }
-            }
-        }
-
         return super.dispatchTouchEvent(ev)
     }
 
@@ -323,19 +235,6 @@ open class NestedOverScrollLayout : ViewGroup, NestedScrollingParent3 {
             mReboundAnimator = null
         }
         return mReboundAnimator != null
-    }
-
-    private fun onPointerUp(e: MotionEvent?) {
-        e ?: return
-        val actionIndex = e.actionIndex
-        // 如果离开的那个点的id正好是我们接管触摸的那个点，那么我们就需要重新再找一个pointer来接管，反之不用管
-        if (e.getPointerId(actionIndex) == mScrollPointerId) {
-            // Pick a new pointer to pick up the slack.
-            val newIndex = if (actionIndex == 0) 1 else 0
-            mScrollPointerId = e.getPointerId(newIndex)
-            mTouchX = e.getX(newIndex)
-            mTouchY = e.getY(newIndex)
-        }
     }
 
     private fun overSpinner() {
