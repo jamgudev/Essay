@@ -22,13 +22,6 @@ class ViewEventActivity3 : ViewBindingActivity<ActivityViewEvent3Binding>() {
     override fun getViewBinding(): ActivityViewEvent3Binding = ActivityViewEvent3Binding.inflate(layoutInflater)
 
     override fun initWidget() {
-        if (android.os.Build.VERSION.SDK_INT >= 31) {
-            mBinding.eventView.setAllowClickWhenDisabled(false)
-        }
-        mBinding.eventView.setOnClickListener {
-            JLog.d(TAG, "onClick called.")
-        }
-
         initRecycler(mBinding.vRecycler1)
     }
 

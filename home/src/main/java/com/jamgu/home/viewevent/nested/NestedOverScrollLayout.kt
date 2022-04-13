@@ -10,11 +10,8 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
-import android.view.View.MeasureSpec.AT_MOST
-import android.view.View.MeasureSpec.EXACTLY
 import android.view.ViewConfiguration
 import android.view.ViewGroup
-import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.view.animation.AnimationUtils
 import android.view.animation.Interpolator
 import android.widget.Scroller
@@ -78,8 +75,6 @@ open class NestedOverScrollLayout : ViewGroup, NestedScrollingParent3 {
     private var mVerticalPermit = false                 // 控制fling时等待contentView回到translation = 0 的位置
 
     private var mRefreshContent: View? = null
-    private var mRefreshHeader: View? = null
-    private var mRefreshFooter: View? = null
 
     constructor(context: Context) : super(context) {
         init()
@@ -115,14 +110,7 @@ open class NestedOverScrollLayout : ViewGroup, NestedScrollingParent3 {
             val childView = super.getChildAt(i)
             if (SmartUtil.isContentView(childView)) {
                 mRefreshContent = childView
-            }
-            when (childView) {
-                is IRefreshHeader -> {
-                    mRefreshHeader = childView
-                }
-                is IRefreshFooter -> {
-                    mRefreshFooter = childView
-                }
+                break
             }
         }
     }
@@ -160,64 +148,6 @@ open class NestedOverScrollLayout : ViewGroup, NestedScrollingParent3 {
             val childView = super.getChildAt(i)
             if (childView == null || childView.visibility == GONE) continue
 
-            if (mRefreshHeader == childView) {
-                mRefreshHeader?.let { headerView ->
-                    val lp = headerView.layoutParams
-                    val mlp = lp as? MarginLayoutParams
-                    val leftMargin = mlp?.leftMargin ?: 0
-                    val rightMargin = mlp?.rightMargin ?: 0
-                    val bottomMargin = mlp?.bottomMargin ?: 0
-                    val topMargin = mlp?.topMargin ?: 0
-                    val widthSpec = getChildMeasureSpec(widthMeasureSpec, leftMargin + rightMargin, lp.width)
-
-                    var height = lp.height
-                    if (lp.height > 0) {
-                        height = topMargin + bottomMargin + lp.height
-                    } else if (lp.height == WRAP_CONTENT) {
-                        val maxHeight =
-                            (MeasureSpec.getSize(heightMeasureSpec) - topMargin - bottomMargin).coerceAtLeast(0)
-                        headerView.measure(widthSpec, MeasureSpec.makeMeasureSpec(maxHeight, AT_MOST))
-                        if (headerView.measuredHeight > 0) {
-                            height = -1
-                        }
-                    }
-
-                    if (height != -1) {
-                        val exactHeight = (height - topMargin - bottomMargin).coerceAtLeast(0)
-                        headerView.measure(widthSpec, MeasureSpec.makeMeasureSpec(exactHeight, EXACTLY))
-                    }
-                }
-            }
-
-            if (mRefreshFooter == childView) {
-                mRefreshFooter?.let { footerView ->
-                    val lp = footerView.layoutParams
-                    val mlp = lp as? MarginLayoutParams
-                    val leftMargin = mlp?.leftMargin ?: 0
-                    val rightMargin = mlp?.rightMargin ?: 0
-                    val bottomMargin = mlp?.bottomMargin ?: 0
-                    val topMargin = mlp?.topMargin ?: 0
-                    val widthSpec = getChildMeasureSpec(widthMeasureSpec, leftMargin + rightMargin, lp.width)
-
-                    var height = lp.height
-                    if (height > 0) {
-                        height = lp.height + topMargin + bottomMargin
-                    } else if (lp.height == WRAP_CONTENT) {
-                        val maxHeight =
-                            (MeasureSpec.getSize(heightMeasureSpec) - topMargin - bottomMargin).coerceAtLeast(0)
-                        footerView.measure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(maxHeight, AT_MOST))
-                        if (footerView.measuredHeight > 0) {
-                            height - 1
-                        }
-                    }
-
-                    if (height != -1) {
-                        val exactHeight = (height - topMargin - bottomMargin).coerceAtLeast(0)
-                        footerView.measure(widthSpec, MeasureSpec.makeMeasureSpec(exactHeight, EXACTLY))
-                    }
-                }
-            }
-
             if (mRefreshContent == childView) {
                 mRefreshContent?.let { contentView ->
                     val lp = contentView.layoutParams
@@ -254,42 +184,6 @@ open class NestedOverScrollLayout : ViewGroup, NestedScrollingParent3 {
         for (i in 0 until super.getChildCount()) {
             val childView = super.getChildAt(i)
             if (childView == null || childView.visibility == GONE) continue
-
-            if (mRefreshHeader == childView) {
-                mRefreshHeader?.let { headerView ->
-                    val lp = headerView.layoutParams
-                    val mlp = lp as? MarginLayoutParams
-                    val leftMargin = mlp?.leftMargin ?: 0
-                    val topMargin = mlp?.topMargin ?: 0
-
-                    val left = leftMargin
-                    var top = topMargin
-                    val right = left + headerView.measuredWidth
-                    var bottom = top + headerView.measuredHeight
-
-                    // 向上偏移
-                    top -= headerView.measuredHeight
-                    bottom -= headerView.measuredHeight
-
-                    headerView.layout(left, top, right, bottom)
-                }
-            }
-
-            if (mRefreshFooter == childView) {
-                mRefreshFooter?.let { footerView ->
-                    val lp = footerView.layoutParams
-                    val mlp = lp as? MarginLayoutParams
-                    val leftMargin = mlp?.leftMargin ?: 0
-                    val topMargin = mlp?.topMargin ?: 0
-
-                    val left = leftMargin
-                    val top = topMargin + thisView.measuredHeight
-                    val right = left + footerView.measuredWidth
-                    val bottom = top + footerView.measuredHeight
-
-                    footerView.layout(left, top, right, bottom)
-                }
-            }
 
             if (mRefreshContent == childView) {
                 mRefreshContent?.let { contentView ->
