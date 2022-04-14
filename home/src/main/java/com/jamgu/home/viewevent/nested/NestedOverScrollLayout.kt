@@ -38,7 +38,7 @@ private const val TAG = "SimpleNestedScrollLayout"
  * 处理上下滑动冲突、实现无缝、阻尼嵌套滑动
  *
  */
-open class NestedOverScrollLayout : ViewGroup, NestedScrollingParent3 {
+open class NestedOverScrollLayout2 : ViewGroup, NestedScrollingParent3 {
 
     private var mVelocityTracker = VelocityTracker.obtain()
     private var mScroller = Scroller(context)
@@ -82,7 +82,6 @@ open class NestedOverScrollLayout : ViewGroup, NestedScrollingParent3 {
     }
 
     private fun init() {
-        setWillNotDraw(false)
         mHandler = Handler(Looper.getMainLooper())
         mParentHelper = NestedScrollingParentHelper(this)
         ViewConfiguration.get(context).let {
@@ -208,7 +207,6 @@ open class NestedOverScrollLayout : ViewGroup, NestedScrollingParent3 {
         // 如果此 View 在嵌套滑动的状态，则不需要往下走，按正常嵌套滑动的流程走
         if (mNestedInProgress) {
             // 如果正在进行嵌套滑动
-//            JLog.d(TAG, "mNestedInProgress = $mNestedInProgress, 按正常嵌套滑动流程走")
             return super.dispatchTouchEvent(ev)
         } else if (!thisView.isEnabled || !mIsAllowOverScroll) {
             // 如果此View不可用，或不支持嵌套滑动，正常分发
@@ -338,7 +336,6 @@ open class NestedOverScrollLayout : ViewGroup, NestedScrollingParent3 {
      * @return Float, 计算结果
      */
     private fun computeDampedSlipDistance(originTranslation: Int): Float {
-//        JLog.d(TAG, "dy = $translationY")
         if (originTranslation >= 0) {
             /**
             final double M = mHeaderMaxDragRate < 10 ? mHeaderHeight * mHeaderMaxDragRate : mHeaderMaxDragRate;
@@ -351,7 +348,6 @@ open class NestedOverScrollLayout : ViewGroup, NestedScrollingParent3 {
             val h = (mScreenHeightPixels / 2).coerceAtLeast(this.height)
             val x = (originTranslation * dragRate).coerceAtLeast(0f)
             val y = m * (1 - 100f.pow(-x / (if (h == 0) 1 else h)))
-//            JLog.d(TAG, "down y = $y, m = $m , h = $h, x = $x")
             return y
         } else {
             /**
@@ -366,8 +362,6 @@ open class NestedOverScrollLayout : ViewGroup, NestedScrollingParent3 {
             val h = (mScreenHeightPixels / 2).coerceAtLeast(this.height)
             val x = -(originTranslation * dragRate).coerceAtMost(0f)
             val y = -m * (1 - 100f.pow(-x / if (h == 0) 1 else h))
-//            JLog.d(TAG, "up y = $y, m = $m , h = $h, x = $x")
-//            scrollBy(0, -y.roundToInt())
             return y
         }
     }
@@ -377,7 +371,6 @@ open class NestedOverScrollLayout : ViewGroup, NestedScrollingParent3 {
             super.getChildAt(i).translationY = dy
         }
         mSpinner = dy
-//        invalidate()
     }
 
     private fun startFlingIfNeed(flingVelocity: Float): Boolean {
@@ -469,10 +462,6 @@ open class NestedOverScrollLayout : ViewGroup, NestedScrollingParent3 {
         mParentHelper?.onNestedScrollAccepted(child, target, axes, type)
         mNestedInProgress = true
         mPreConsumedNeeded = reverseComputeFromDamped2Origin(mSpinner)
-        JLog.d(
-            TAG, "onNestedScrollAccepted, type = $type, mSpinner = $mSpinner," +
-                    " mPreConsumedNeeded = $mPreConsumedNeeded"
-        )
 
         interceptReboundByAction(MotionEvent.ACTION_DOWN)
     }
@@ -569,7 +558,6 @@ open class NestedOverScrollLayout : ViewGroup, NestedScrollingParent3 {
             ) {
                 mPreConsumedNeeded -= dy
                 moveTranslation(computeDampedSlipDistance(mPreConsumedNeeded))
-//                JLog.d(TAG, "mPreConsumedNeeded = $mPreConsumedNeeded")
                 if (consumed != null) {
                     consumed[1] += dy
                 }
