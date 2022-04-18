@@ -30,7 +30,7 @@ import kotlin.math.log
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
-private const val TAG = "SimpleNestedScrollLayout"
+private const val TAG = "NestedOverScrollLayout"
 
 /**
  * Created by jamgu on 2022/02/18
@@ -38,7 +38,7 @@ private const val TAG = "SimpleNestedScrollLayout"
  * 处理上下滑动冲突、实现无缝、阻尼嵌套滑动
  *
  */
-open class NestedOverScrollLayout2 : ViewGroup, NestedScrollingParent3 {
+open class NestedOverScrollLayout : ViewGroup, NestedScrollingParent3 {
 
     private var mVelocityTracker = VelocityTracker.obtain()
     private var mScroller = Scroller(context)
@@ -94,9 +94,6 @@ open class NestedOverScrollLayout2 : ViewGroup, NestedScrollingParent3 {
     override fun onFinishInflate() {
         super.onFinishInflate()
         val childCount = super.getChildCount()
-        if (childCount > 3) {
-            throw RuntimeException("最多支持3个子View")
-        }
 
         for (i in 0 until childCount) {
             val childView = super.getChildAt(i)
@@ -105,31 +102,6 @@ open class NestedOverScrollLayout2 : ViewGroup, NestedScrollingParent3 {
                 break
             }
         }
-    }
-
-    override fun onAttachedToWindow() {
-        super.onAttachedToWindow()
-        // 让 contentView 显示在最前面
-        if (mRefreshContent != null) {
-            super.bringChildToFront(mRefreshContent)
-        }
-    }
-
-    override fun onDetachedFromWindow() {
-        super.onDetachedFromWindow()
-        mReboundAnimator?.let {
-            it.removeAllUpdateListeners()
-            it.removeAllListeners()
-            it.duration = 0
-            it.cancel()
-        }
-        mReboundAnimator = null
-        mAnimationRunnable = null
-        mVelocityTracker.clear()
-        if (mHandler != null) {
-            mHandler?.removeCallbacksAndMessages(null)
-        }
-
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -196,23 +168,18 @@ open class NestedOverScrollLayout2 : ViewGroup, NestedScrollingParent3 {
         }
     }
 
+    override fun generateLayoutParams(attrs: AttributeSet?): LayoutParams {
+        return MarginLayoutParams(context, attrs)
+    }
+
     override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
         ev ?: return false
-
-        val actionIndex = ev.actionIndex
-        // action without idx
-        val action = ev.actionMasked
-
-        val thisView = this
-        // 如果此 View 在嵌套滑动的状态，则不需要往下走，按正常嵌套滑动的流程走
+        // 如果处于嵌套滑动状态，正常下发，以确保嵌套滑动的正常运行。
         if (mNestedInProgress) {
-            // 如果正在进行嵌套滑动
-            return super.dispatchTouchEvent(ev)
-        } else if (!thisView.isEnabled || !mIsAllowOverScroll) {
-            // 如果此View不可用，或不支持嵌套滑动，正常分发
             return super.dispatchTouchEvent(ev)
         }
 
+        val action = ev.actionMasked
         if (interceptReboundByAction(action)) {
             return false
         }
@@ -233,6 +200,168 @@ open class NestedOverScrollLayout2 : ViewGroup, NestedScrollingParent3 {
             mReboundAnimator = null
         }
         return mReboundAnimator != null
+    }
+
+    // 嵌套滑动开始时调用，
+    // 方法返回 true 时，表示此Parent能够接收此次嵌套滑动事件
+    // 返回 false，不接收此次嵌套滑动事件，后续方法都不会调用
+    override fun onStartNestedScroll(child: View, target: View, axes: Int, type: Int): Boolean {
+        JLog.d(TAG, "onStartNestedScroll")
+        return axes and ViewCompat.SCROLL_AXIS_VERTICAL != 0
+    }
+
+    // 当 onStartNestedScroll() 方法返回 true 后，此方法会立刻调用
+    // 可在此方法做每次嵌套滑动的初始化工作
+    override fun onNestedScrollAccepted(child: View, target: View, axes: Int, type: Int) {
+        JLog.d(TAG, "onNestedScrollAccepted")
+        mParentHelper?.onNestedScrollAccepted(child, target, axes, type)
+        mPreConsumedNeeded = reverseComputeFromDamped2Origin(mSpinner)
+        mNestedInProgress = true
+
+        interceptReboundByAction(MotionEvent.ACTION_DOWN)
+    }
+
+    // 当嵌套滑动即将结束时，会调用此方法
+    override fun onStopNestedScroll(target: View, type: Int) {
+        JLog.d(TAG, "onStopNestedScroll")
+        mParentHelper?.onStopNestedScroll(target, type)
+        mNestedInProgress = false
+        overSpinner()
+    }
+
+    // 在 Child 滑动之前调用，可让 Parent 先消耗一定距离。
+    override fun onNestedPreScroll(target: View, dx: Int, dy: Int, consumed: IntArray, type: Int) {
+        JLog.d(TAG, "onNestedPreScroll")
+        if (dy == 0) return
+
+        // 触摸事件的嵌套滑动才处理
+        if (type == ViewCompat.TYPE_TOUCH) {
+            val consumedY: Int
+            // 两者异向，加剧过度滑动
+            if (mPreConsumedNeeded * dy < 0) {
+                consumedY = dy
+                mPreConsumedNeeded -= dy
+                moveTranslation(computeDampedSlipDistance(mPreConsumedNeeded))
+            } else {
+                // 两者同向，需先将 mPreConsumedNeeded 消耗掉
+                val lastConsumedNeeded = mPreConsumedNeeded
+                if (dy.absoluteValue > mPreConsumedNeeded.absoluteValue) {
+                    consumedY = mPreConsumedNeeded
+                    mPreConsumedNeeded = 0
+                } else {
+                    consumedY = dy
+                    mPreConsumedNeeded -= dy
+                }
+                if (lastConsumedNeeded != mPreConsumedNeeded) {
+                    moveTranslation(computeDampedSlipDistance(mPreConsumedNeeded))
+                }
+            }
+            consumed[1] = consumedY
+        }
+    }
+
+    // 此 Parent 正在执行嵌套滑动时，会调用此方法，在这里实现嵌套滑动的逻辑
+    override fun onNestedScroll(
+        target: View,
+        dxConsumed: Int,
+        dyConsumed: Int,
+        dxUnconsumed: Int,
+        dyUnconsumed: Int,
+        type: Int
+    ) {
+        JLog.d(TAG, "onNestedScroll no consumed")
+        if (type == ViewCompat.TYPE_TOUCH) {
+            onNestedScrollInternal(dyUnconsumed, type, null)
+        }
+    }
+
+    // 此 Parent 正在执行嵌套滑动时，会调用此方法，在这里实现嵌套滑动的逻辑
+    // 与上面方法的区别，此方法多了个 consumed 参数，用于存放嵌套滑动执行完后，
+    // 被次 parent 消耗的滑动距离
+    override fun onNestedScroll(
+        target: View,
+        dxConsumed: Int,
+        dyConsumed: Int,
+        dxUnconsumed: Int,
+        dyUnconsumed: Int,
+        type: Int,
+        consumed: IntArray
+    ) {
+        JLog.d(TAG, "onNestedScroll, dyUnconsumed = $dyUnconsumed")
+        if (type == ViewCompat.TYPE_TOUCH) {
+            onNestedScrollInternal(dyUnconsumed, type, consumed)
+        } else {
+            consumed[1] += dyUnconsumed
+        }
+    }
+
+    @Synchronized
+    private fun onNestedScrollInternal(dyUnconsumed: Int, type: Int, consumed: IntArray?) {
+        if (dyUnconsumed == 0) return
+        // dy > 0 向上滚
+        val dy = dyUnconsumed
+        if (type == ViewCompat.TYPE_NON_TOUCH) {
+            // fling 不处理，直接消耗
+            if (consumed != null) {
+                consumed[1] += dy
+            }
+        } else {
+            if ((dy < 0 && mIsAllowOverScroll && WidgetUtil.canRefresh(mRefreshContent, null))
+                    || (dy > 0 && mIsAllowOverScroll && WidgetUtil.canLoadMore(
+                        mRefreshContent,
+                        null
+                    ))
+            ) {
+                mPreConsumedNeeded -= dy
+                moveTranslation(computeDampedSlipDistance(mPreConsumedNeeded))
+                if (consumed != null) {
+                    consumed[1] += dy
+                }
+            }
+        }
+    }
+
+    private fun moveTranslation(dy: Float) {
+        for (i in 0 until super.getChildCount()) {
+            super.getChildAt(i).translationY = dy
+        }
+        mSpinner = dy
+    }
+
+    /**
+     * 计算阻尼滑动距离
+     * @param originTranslation 原始应该滑动的距离
+     * @return Float, 计算结果
+     */
+    private fun computeDampedSlipDistance(originTranslation: Int): Float {
+        if (originTranslation >= 0) {
+            /**
+            final double M = mHeaderMaxDragRate < 10 ? mHeaderHeight * mHeaderMaxDragRate : mHeaderMaxDragRate;
+            final double H = Math.max(mScreenHeightPixels / 2, thisView.getHeight());
+            final double x = Math.max(0, spinner * mDragRate);
+            final double y = Math.min(M * (1 - Math.pow(100, -x / (H == 0 ? 1 : H))), x);// 公式 y = M(1-100^(-x/H))
+             */
+            val dragRate = 0.5f
+            val m = if (mMaxDragRate < 10) mMaxDragRate * mMaxDragHeight else mMaxDragRate
+            val h = (mScreenHeightPixels / 2).coerceAtLeast(this.height)
+            val x = (originTranslation * dragRate).coerceAtLeast(0f)
+            val y = m * (1 - 100f.pow(-x / (if (h == 0) 1 else h)))
+            return y
+        } else {
+            /**
+            final float maxDragHeight = mFooterMaxDragRate < 10 ? mFooterHeight * mFooterMaxDragRate : mFooterMaxDragRate;
+            final double M = maxDragHeight - mFooterHeight;
+            final double H = Math.max(mScreenHeightPixels * 4 / 3, thisView.getHeight()) - mFooterHeight;
+            final double x = -Math.min(0, (spinner + mFooterHeight) * mDragRate);
+            final double y = -Math.min(M * (1 - Math.pow(100, -x / (H == 0 ? 1 : H))), x);// 公式 y = M(1-100^(-x/H))
+             */
+            val dragRate = 0.5f
+            val m = if (mMaxDragRate < 10) mMaxDragRate * mMaxDragHeight else mMaxDragRate
+            val h = (mScreenHeightPixels / 2).coerceAtLeast(this.height)
+            val x = -(originTranslation * dragRate).coerceAtMost(0f)
+            val y = -m * (1 - 100f.pow(-x / if (h == 0) 1 else h))
+            return y
+        }
     }
 
     private fun overSpinner() {
@@ -295,19 +424,6 @@ open class NestedOverScrollLayout2 : ViewGroup, NestedScrollingParent3 {
     }
 
     /**
-     * 越界回弹动画
-     * @param velocity 速度
-     */
-    protected fun animSpinnerBounce(velocity: Float) {
-        if (mReboundAnimator == null) {
-            JLog.d(TAG, "animSpinnerBounce = $mSpinner")
-            if (mSpinner == 0f && mIsAllowOverScroll) {
-                mAnimationRunnable = BounceRunnable(velocity, 0)
-            }
-        }
-    }
-
-    /**
      * 给出阻尼计算的距离，计算原始滑动距离
      * @param dampedDistance 阻尼计算过后的距离
      * @return Float, 计算结果
@@ -330,243 +446,4 @@ open class NestedOverScrollLayout2 : ViewGroup, NestedScrollingParent3 {
         }
     }
 
-    /**
-     * 计算阻尼滑动距离
-     * @param originTranslation 原始应该滑动的距离
-     * @return Float, 计算结果
-     */
-    private fun computeDampedSlipDistance(originTranslation: Int): Float {
-        if (originTranslation >= 0) {
-            /**
-            final double M = mHeaderMaxDragRate < 10 ? mHeaderHeight * mHeaderMaxDragRate : mHeaderMaxDragRate;
-            final double H = Math.max(mScreenHeightPixels / 2, thisView.getHeight());
-            final double x = Math.max(0, spinner * mDragRate);
-            final double y = Math.min(M * (1 - Math.pow(100, -x / (H == 0 ? 1 : H))), x);// 公式 y = M(1-100^(-x/H))
-             */
-            val dragRate = 0.5f
-            val m = if (mMaxDragRate < 10) mMaxDragRate * mMaxDragHeight else mMaxDragRate
-            val h = (mScreenHeightPixels / 2).coerceAtLeast(this.height)
-            val x = (originTranslation * dragRate).coerceAtLeast(0f)
-            val y = m * (1 - 100f.pow(-x / (if (h == 0) 1 else h)))
-            return y
-        } else {
-            /**
-            final float maxDragHeight = mFooterMaxDragRate < 10 ? mFooterHeight * mFooterMaxDragRate : mFooterMaxDragRate;
-            final double M = maxDragHeight - mFooterHeight;
-            final double H = Math.max(mScreenHeightPixels * 4 / 3, thisView.getHeight()) - mFooterHeight;
-            final double x = -Math.min(0, (spinner + mFooterHeight) * mDragRate);
-            final double y = -Math.min(M * (1 - Math.pow(100, -x / (H == 0 ? 1 : H))), x);// 公式 y = M(1-100^(-x/H))
-             */
-            val dragRate = 0.5f
-            val m = if (mMaxDragRate < 10) mMaxDragRate * mMaxDragHeight else mMaxDragRate
-            val h = (mScreenHeightPixels / 2).coerceAtLeast(this.height)
-            val x = -(originTranslation * dragRate).coerceAtMost(0f)
-            val y = -m * (1 - 100f.pow(-x / if (h == 0) 1 else h))
-            return y
-        }
-    }
-
-    private fun moveTranslation(dy: Float) {
-        for (i in 0 until super.getChildCount()) {
-            super.getChildAt(i).translationY = dy
-        }
-        mSpinner = dy
-    }
-
-    private fun startFlingIfNeed(flingVelocity: Float): Boolean {
-        val velocity = if (flingVelocity == 0f) mCurrentVelocity else flingVelocity
-        if (velocity.absoluteValue > mMinimumVelocity) {
-            if (velocity < 0 && mIsAllowOverScroll && mSpinner == 0f
-                    || velocity > 0 && mIsAllowOverScroll && mSpinner == 0f
-            ) {
-                mScroller.fling(0, 0, 0, (-velocity).toInt(), 0, 0, -Int.MAX_VALUE, Int.MAX_VALUE)
-                mScroller.computeScrollOffset()
-                val thisView: View = this
-                thisView.invalidate()
-            }
-        }
-
-        return false
-    }
-
-    protected inner class BounceRunnable internal constructor(var mVelocity: Float, var mSmoothDistance: Int) :
-        Runnable {
-        var mFrame = 0
-        var mFrameDelay = 10
-        var mLastTime: Long
-        var mOffset = 0f
-        override fun run() {
-            if (mAnimationRunnable === this) {
-                mVelocity *= if (abs(mSpinner) >= abs(mSmoothDistance)) {
-                    if (mSmoothDistance != 0) {
-                        0.45.pow((++mFrame * 2).toDouble()).toFloat() //刷新、加载时回弹滚动数度衰减
-                    } else {
-                        0.85.pow((++mFrame * 2).toDouble()).toFloat() //回弹滚动数度衰减
-                    }
-                } else {
-                    0.95.pow((++mFrame * 2).toDouble()).toFloat() //平滑滚动数度衰减
-                }
-                val now = AnimationUtils.currentAnimationTimeMillis()
-                val t = 1f * (now - mLastTime) / 1000
-                val velocity = mVelocity * t
-                if (abs(velocity) >= 1) {
-                    mLastTime = now
-                    mOffset += velocity
-                    moveTranslation(computeDampedSlipDistance(mOffset.roundToInt()))
-                    mHandler?.postDelayed(this, mFrameDelay.toLong())
-                } else {
-                    mAnimationRunnable = null
-                    if (abs(mSpinner) >= abs(mSmoothDistance)) {
-                        val duration = 10L * (abs(mSpinner - mSmoothDistance).dp2px(context))
-                                .coerceAtLeast(30).coerceAtMost(100)
-                        animSpinner(mSmoothDistance.toFloat(), 0, mReboundInterpolator, duration)
-                    }
-                }
-            }
-        }
-
-        init {
-            mLastTime = AnimationUtils.currentAnimationTimeMillis()
-            mHandler?.postDelayed(this, mFrameDelay.toLong())
-        }
-    }
-
-    override fun computeScroll() {
-        if (mScroller.computeScrollOffset()) {
-            val finalY = mScroller.finalY
-            if (finalY < 0 && WidgetUtil.canRefresh(mRefreshContent, null)
-                    || finalY > 0 && WidgetUtil.canLoadMore(mRefreshContent, null)
-            ) {
-                if (mVerticalPermit) {
-                    val velocity = if (finalY > 0) -mScroller.currVelocity else mScroller.currVelocity
-                    animSpinnerBounce(velocity)
-                }
-                mScroller.forceFinished(true)
-            } else {
-                mVerticalPermit = true
-                val thisView = this
-                thisView.invalidate()
-            }
-        }
-    }
-
-    override fun generateLayoutParams(attrs: AttributeSet?): LayoutParams {
-        return MarginLayoutParams(context, attrs)
-    }
-
-    override fun onStartNestedScroll(child: View, target: View, axes: Int, type: Int): Boolean {
-        return axes and ViewCompat.SCROLL_AXIS_VERTICAL != 0
-    }
-
-    override fun onNestedScrollAccepted(child: View, target: View, axes: Int, type: Int) {
-        mParentHelper?.onNestedScrollAccepted(child, target, axes, type)
-        mNestedInProgress = true
-        mPreConsumedNeeded = reverseComputeFromDamped2Origin(mSpinner)
-
-        interceptReboundByAction(MotionEvent.ACTION_DOWN)
-    }
-
-    override fun onStopNestedScroll(target: View, type: Int) {
-//        JLog.d(TAG, "onStopNestedScroll")
-        mParentHelper?.onStopNestedScroll(target, type)
-        mNestedInProgress = false
-        overSpinner()
-    }
-
-    override fun onNestedPreFling(target: View, velocityX: Float, velocityY: Float): Boolean {
-        return startFlingIfNeed(-velocityY)
-    }
-
-    override fun onNestedFling(target: View, velocityX: Float, velocityY: Float, consumed: Boolean): Boolean {
-        return super.onNestedFling(target, velocityX, velocityY, consumed)
-    }
-
-    override fun onNestedScroll(
-        target: View,
-        dxConsumed: Int,
-        dyConsumed: Int,
-        dxUnconsumed: Int,
-        dyUnconsumed: Int,
-        type: Int,
-        consumed: IntArray
-    ) {
-        if (type == ViewCompat.TYPE_TOUCH) {
-            onNestedScrollInternal(dyUnconsumed, type, consumed)
-        } else {
-            consumed[1] += dyUnconsumed
-        }
-    }
-
-    override fun onNestedScroll(
-        target: View,
-        dxConsumed: Int,
-        dyConsumed: Int,
-        dxUnconsumed: Int,
-        dyUnconsumed: Int,
-        type: Int
-    ) {
-        if (type == ViewCompat.TYPE_TOUCH) {
-            onNestedScrollInternal(dyUnconsumed, type, null)
-        }
-    }
-
-    override fun onNestedPreScroll(target: View, dx: Int, dy: Int, consumed: IntArray, type: Int) {
-        if (dy == 0) return
-
-        // 触摸事件的嵌套滑动才处理
-        if (type == ViewCompat.TYPE_TOUCH) {
-            val consumedY: Int
-            // 两者异向，加剧过度滑动
-            if (mPreConsumedNeeded * dy < 0) {
-                consumedY = dy
-                mPreConsumedNeeded -= dy
-                moveTranslation(computeDampedSlipDistance(mPreConsumedNeeded))
-            } else {
-                // 两者同向，需先将 mPreConsumedNeeded 消耗掉
-                val lastConsumedNeeded = mPreConsumedNeeded
-                if (dy.absoluteValue > mPreConsumedNeeded.absoluteValue) {
-                    consumedY = mPreConsumedNeeded
-                    mPreConsumedNeeded = 0
-                } else {
-                    consumedY = dy
-                    mPreConsumedNeeded -= dy
-                }
-                if (lastConsumedNeeded != mPreConsumedNeeded) {
-                    moveTranslation(computeDampedSlipDistance(mPreConsumedNeeded))
-                }
-            }
-            consumed[1] = consumedY
-        }
-    }
-
-    @Synchronized
-    private fun onNestedScrollInternal(dyUnconsumed: Int, type: Int, consumed: IntArray?) {
-        if (dyUnconsumed == 0) return
-        // dy > 0 向上滚
-        val dy = dyUnconsumed
-        if (type == ViewCompat.TYPE_NON_TOUCH) {
-            // fling 不处理，直接消耗
-            if (consumed != null) {
-                consumed[1] += dy
-            }
-        } else {
-            if ((dy < 0 && mIsAllowOverScroll && mPreConsumedNeeded == 0 && WidgetUtil.canRefresh(getChildAt(0), null))
-                    || (dy > 0 && mIsAllowOverScroll && mPreConsumedNeeded == 0 && WidgetUtil.canLoadMore(
-                        getChildAt(0),
-                        null
-                    ))
-            ) {
-                mPreConsumedNeeded -= dy
-                moveTranslation(computeDampedSlipDistance(mPreConsumedNeeded))
-                if (consumed != null) {
-                    consumed[1] += dy
-                }
-            }
-        }
-
-    }
-
-    override fun getNestedScrollAxes(): Int {
-        return super.getNestedScrollAxes()
-    }
 }
