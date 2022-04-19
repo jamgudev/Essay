@@ -300,6 +300,7 @@ open class NestedOverScrollLayout : ViewGroup, NestedScrollingParent3 {
         if (dyUnconsumed == 0) return
         // dy > 0 向上滚
         val dy = dyUnconsumed
+        JLog.d(TAG, "onNestedScrollInternal")
         if (type == ViewCompat.TYPE_NON_TOUCH) {
             // fling 不处理，直接消耗
             if (consumed != null) {
@@ -445,5 +446,109 @@ open class NestedOverScrollLayout : ViewGroup, NestedScrollingParent3 {
             -((-h * log((1 - y / m), 100f)) / dragRate).roundToInt()
         }
     }
+
+    override fun onNestedPreFling(target: View, velocityX: Float, velocityY: Float): Boolean {
+        // 返回 true，会接管子 View 的 fling 事件，子 View 的 fling 代码不会执行。
+        return startFlingIfNeed(-velocityY)
+    }
+
+    private fun startFlingIfNeed(flingVelocity: Float): Boolean {
+        val velocity = if (flingVelocity == 0f) mCurrentVelocity else flingVelocity
+        if (velocity.absoluteValue > mMinimumVelocity) {
+            if (velocity < 0 && mIsAllowOverScroll && mSpinner == 0f
+                    || velocity > 0 && mIsAllowOverScroll && mSpinner == 0f
+            ) {
+                mScroller.fling(0, 0, 0, (-velocity).toInt(), 0, 0, -Int.MAX_VALUE, Int.MAX_VALUE)
+                mScroller.computeScrollOffset()
+                val thisView: View = this
+                thisView.invalidate()
+            }
+        }
+
+        return false
+    }
+
+    // 这个方法会被多次调用，直至满足过度滑动的条件：
+    // finalY < 0 && WidgetUtil.canRefresh(mRefreshContent, null)
+    // || finalY > 0 && WidgetUtil.canLoadMore(mRefreshContent, null
+    override fun computeScroll() {
+        if (mScroller.computeScrollOffset()) {
+            val finalY = mScroller.finalY
+            if (finalY < 0 && WidgetUtil.canRefresh(mRefreshContent, null)
+                    || finalY > 0 && WidgetUtil.canLoadMore(mRefreshContent, null)
+            ) {
+                if (mVerticalPermit) {
+                    val velocity = if (finalY > 0) -mScroller.currVelocity else mScroller.currVelocity
+                    // 可以过度滑动后，通过动画模拟惯性滑动的过程
+                    animSpinnerBounce(velocity)
+                }
+                mScroller.forceFinished(true)
+            } else {
+                mVerticalPermit = true
+                val thisView = this
+                thisView.invalidate()
+            }
+        }
+    }
+
+    /**
+     * 惯性滑动后回弹动画
+     * @param velocity 速度
+     */
+    protected fun animSpinnerBounce(velocity: Float) {
+        // 模拟惯性滑动时，回弹动画必须已经停止
+        if (mReboundAnimator == null) {
+            JLog.d(TAG, "animSpinnerBounce = $mSpinner")
+            if (mSpinner == 0f && mIsAllowOverScroll) {
+                // 执行 BounceRunnable
+                mAnimationRunnable = BounceRunnable(velocity, 0)
+            }
+        }
+    }
+
+    protected inner class BounceRunnable internal constructor(var mVelocity: Float, var mSmoothDistance: Int) :
+        Runnable {
+        var mFrame = 0
+        var mFrameDelay = 10
+        var mLastTime: Long
+        var mOffset = 0f
+        override fun run() {
+            if (mAnimationRunnable === this) {
+                mVelocity *= if (abs(mSpinner) >= abs(mSmoothDistance)) {
+                    if (mSmoothDistance != 0) {
+                        0.45.pow((++mFrame * 2).toDouble()).toFloat() //刷新、加载时回弹滚动数度衰减
+                    } else {
+                        0.85.pow((++mFrame * 2).toDouble()).toFloat() //回弹滚动数度衰减
+                    }
+                } else {
+                    0.95.pow((++mFrame * 2).toDouble()).toFloat() //平滑滚动数度衰减
+                }
+                val now = AnimationUtils.currentAnimationTimeMillis()
+                val t = 1f * (now - mLastTime) / 1000
+                val velocity = mVelocity * t
+                // 还有速度时，就加剧过度滑动
+                if (abs(velocity) >= 1) {
+                    mLastTime = now
+                    mOffset += velocity
+                    moveTranslation(computeDampedSlipDistance(mOffset.roundToInt()))
+                    mHandler?.postDelayed(this, mFrameDelay.toLong())
+                } else {
+                    // 没有速度后，通过 reboundAnimator，回弹至初始位置
+                    mAnimationRunnable = null
+                    if (abs(mSpinner) >= abs(mSmoothDistance)) {
+                        val duration = 10L * (abs(mSpinner - mSmoothDistance).dp2px(context))
+                                .coerceAtLeast(30).coerceAtMost(100)
+                        animSpinner(mSmoothDistance.toFloat(), 0, mReboundInterpolator, duration)
+                    }
+                }
+            }
+        }
+
+        init {
+            mLastTime = AnimationUtils.currentAnimationTimeMillis()
+            mHandler?.postDelayed(this, mFrameDelay.toLong())
+        }
+    }
+
 
 }
