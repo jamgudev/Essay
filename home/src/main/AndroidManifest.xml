@@ -3,8 +3,10 @@
         package="com.jamgu.home">
 
     <application>
-        <activity android:name=".recyclerview.QQContactActivity"
-                android:theme="@style/Transparent_Theme"/>
+        <activity android:name=".uicrash.UICrashActivity"></activity>
+        <activity
+                android:name=".recyclerview.QQContactActivity"
+                android:theme="@style/Transparent_Theme" />
         <activity
                 android:name=".dawerlayout.DrawerActivity"
                 android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
@@ -14,11 +16,11 @@
                 android:name=".HomePageActivity"
                 android:launchMode="singleTask"
                 android:taskAffinity="com.jamgu.test2" />
-
         <activity android:name=".viewevent.ViewEventActivity" />
         <activity android:name=".viewevent.simplesmtart.ViewEventActivity2" />
-        <activity android:name=".viewevent.nested.ViewEventActivity3"
-                android:label="ViewEventActivity3"/>
+        <activity
+                android:name=".viewevent.nested.ViewEventActivity3"
+                android:label="ViewEventActivity3" />
 
         <service
                 android:name=".jobscheduler.MJobService"
