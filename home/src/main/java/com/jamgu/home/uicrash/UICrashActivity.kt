@@ -1,18 +1,10 @@
 package com.jamgu.home.uicrash
 
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.os.Looper
-import android.view.View
-import android.view.ViewGroup
-import android.view.Window.ID_ANDROID_CONTENT
-import androidx.core.view.children
 import com.jamgu.common.page.activity.ViewBindingActivity
 import com.jamgu.common.thread.ThreadPool
 import com.jamgu.common.util.log.JLog
-import com.jamgu.common.widget.dialog.CommonBottomDialog
-import com.jamgu.common.widget.dialog.CommonProgressDialog
-import com.jamgu.home.R
 import com.jamgu.home.Schemes
 import com.jamgu.home.databinding.ActivityUICrashBinding
 import com.jamgu.krouter.annotation.KRouter
@@ -31,7 +23,7 @@ class UICrashActivity : ViewBindingActivity<ActivityUICrashBinding>() {
         super.onCreate(savedInstanceState)
     }
 
-    override fun onResume() {
+/*    override fun onResume() {
         super.onResume()
 
         // 正常运行
@@ -42,6 +34,37 @@ class UICrashActivity : ViewBindingActivity<ActivityUICrashBinding>() {
 //        ThreadPool.runOnNonUIThread({
 //            mBinding.vTvRandom.text = "在非UI线程修改UI"
 //        }, 500)
+    }*/
+
+    override fun onResume() {
+        super.onResume()
+
+        mBinding.vTvRandom.text = "点击进行网络请求"
+
+        mBinding.vTvRandom.setOnClickListener {
+            ThreadPool.runOnNonUIThread({
+                Looper.prepare()
+                val dialog = CommonProgressDialog2.show(
+                    this, "正在加载",
+                    null, true, null
+                )
+
+                JLog.d(TAG, "runOnNonUIThread is in main thread = ${ThreadPool.isMainThread()}，" +
+                        "currentThread = ${Thread.currentThread()}")
+
+                dialog?.getLoadingTextView()?.setOnClickListener {
+                    ThreadPool.runUITask {
+                        JLog.d(TAG, "setOnClickListener is in main thread = ${ThreadPool.isMainThread()}" +
+                                "，currentThread = ${Thread.currentThread()}")
+                        val loadingMsg = dialog.getLoadingMsg()
+                        dialog.getLoadingTextView().text = "$loadingMsg, 正在加载"
+                    }
+                }
+
+                Looper.loop()
+            }, 200)
+        }
+
     }
 
     override fun getViewBinding(): ActivityUICrashBinding = ActivityUICrashBinding.inflate(layoutInflater)
