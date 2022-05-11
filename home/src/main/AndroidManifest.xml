@@ -3,7 +3,8 @@
         package="com.jamgu.home">
 
     <application>
-        <activity android:name=".uicrash.UICrashActivity"></activity>
+        <activity android:name=".recyclerview.refreshandloadmore.RefreshAndLoadMoreActivity"></activity>
+        <activity android:name=".uicrash.UICrashActivity" />
         <activity
                 android:name=".recyclerview.QQContactActivity"
                 android:theme="@style/Transparent_Theme" />

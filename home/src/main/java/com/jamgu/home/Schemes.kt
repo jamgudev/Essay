@@ -44,4 +44,8 @@ class Schemes {
     object UICrashPage {
         const val HOST_NAME = "home/ui_crash"
     }
+
+    object RefreshAndLoadMorePage {
+        const val HOST_NAME = "home/refresh_and_load_more"
+    }
 }
