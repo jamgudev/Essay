@@ -59,8 +59,12 @@ class RefreshAndLoadMoreActivity : ViewBindingActivity<ActivityRefreshAndLoadMor
 
                 if (lastVisibleItem == totalItemCount - 1 && !isLoadingNextPage && !isRefreshing) {
                     if (totalItemCount > 0) {
-                        JLog.d(TAG, "totalItemCount = $totalItemCount")
-                        mAdapter.addLoadItem()
+                        // 在 recyclerView 滚动时向列表中添加item 并调用 notifyItemInserted() 方法更新时，
+                        // 系统会给出 warning: 可能会影响RecyclerView滑动时的高度等测量
+                        // 所以将这次更新 UI 的操作，延迟到下一帧绘制。
+                        recyclerView.post {
+                            mAdapter.addLoadItem()
+                        }
                     }
 
                     // 在前面addLoadItem后，itemCount已经变化
@@ -77,7 +81,7 @@ class RefreshAndLoadMoreActivity : ViewBindingActivity<ActivityRefreshAndLoadMor
         })
 
         // 分割线
-        mBinding.vRecycler.addItemDecoration(DividerItemDecoration(this,DividerItemDecoration.VERTICAL))
+        mBinding.vRecycler.addItemDecoration(DividerItemDecoration(this, DividerItemDecoration.VERTICAL))
     }
 
     private fun pullData() {
