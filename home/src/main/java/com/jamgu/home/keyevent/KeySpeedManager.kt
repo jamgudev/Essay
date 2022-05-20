@@ -58,6 +58,9 @@ class KeySpeedManager {
         }.also { mTextWatcher = it })
     }
 
+    /**
+     * 不用时需调用此方法，回收资源
+     */
     fun reveal() {
         mKeyBoardShowHideListener?.reveal()
         mEditText?.removeTextChangedListener(mTextWatcher)
