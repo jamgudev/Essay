@@ -3,7 +3,10 @@
         package="com.jamgu.home">
 
     <application>
-        <activity android:name=".recyclerview.refreshandloadmore.RefreshAndLoadMoreActivity"></activity>
+        <activity
+                android:name=".keyevent.KeySpeedActivity"
+                android:exported="false" />
+        <activity android:name=".recyclerview.refreshandloadmore.RefreshAndLoadMoreActivity" />
         <activity android:name=".uicrash.UICrashActivity" />
         <activity
                 android:name=".recyclerview.QQContactActivity"

@@ -48,4 +48,8 @@ class Schemes {
     object RefreshAndLoadMorePage {
         const val HOST_NAME = "home/refresh_and_load_more"
     }
+
+    object KeySpeedPage {
+        const val HOST_NAME = "home/key_speed_page"
+    }
 }
