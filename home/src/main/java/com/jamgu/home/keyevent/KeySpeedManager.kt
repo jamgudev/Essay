@@ -3,9 +3,8 @@ package com.jamgu.home.keyevent
 import android.app.Activity
 import android.text.Editable
 import android.text.TextWatcher
-import android.view.View
+import android.util.Log
 import android.widget.EditText
-import com.jamgu.common.util.log.JLog
 
 private const val TAG = "KeySpeedManager"
 
@@ -23,6 +22,7 @@ class KeySpeedManager {
 
     private var mTextWatcher: TextWatcher? = null
     private var mEditText: EditText? = null
+    private var mInterval: Long? = 0L
 
     fun init(activity: Activity?, editText: EditText?, IKeySpeedMonitor: IKeySpeedMonitor?) {
         if (activity == null || editText == null || IKeySpeedMonitor == null) return
@@ -44,9 +44,15 @@ class KeySpeedManager {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {
                 mTotalCount++
                 val nowTime = System.currentTimeMillis()
-                val duration = (nowTime - mStartTime) / 1000f
-                IKeySpeedMonitor.onSpeed(mTotalCount * 1.0f / duration)
-                JLog.d(TAG, "mStartTime = $mStartTime, nowTime = $nowTime, duration = $duration, mTotalCount = $mTotalCount")
+                val duration = (nowTime - mStartTime)
+                if ((mInterval ?: 0L) < duration) {
+                    mTotalCount = 1
+                    mStartTime = System.currentTimeMillis()
+//                    Log.d(TAG, "monitor internal($mInterval) reset, passed duration = $duration")
+                    return
+                }
+                IKeySpeedMonitor.onSpeed(mTotalCount * 1.0f / (duration / 1000f))
+                Log.d(TAG, "mStartTime = $mStartTime, nowTime = $nowTime, duration = $duration, mTotalCount = $mTotalCount")
             }
 
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
@@ -56,6 +62,14 @@ class KeySpeedManager {
             }
 
         }.also { mTextWatcher = it })
+    }
+
+    /**
+     * 设置速度监听间隔
+     * @param internal，监听间隔，单位ms
+     */
+    fun setSpeedMonitorInternal(internal: Long?) {
+        this.mInterval = internal
     }
 
     /**
